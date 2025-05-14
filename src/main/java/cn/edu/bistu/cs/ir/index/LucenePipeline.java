@@ -2,6 +2,8 @@ package cn.edu.bistu.cs.ir.index;
 
 import cn.edu.bistu.cs.ir.crawler.IjfCrawler;
 import cn.edu.bistu.cs.ir.model.Player;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.lucene.document.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,6 +61,15 @@ public class LucenePipeline implements Pipeline {
         document.add(new TextField("LOCATION_ICON", player.getLocationIcon(), Field.Store.YES));
         // 公斤数
         document.add(new TextField("KG", player.getKg(), Field.Store.YES));
+
+        // 照片
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            String json = objectMapper.writeValueAsString(player.getPhotoEntity());
+            document.add(new TextField("PHOTOS", json, Field.Store.YES));
+        } catch (JsonProcessingException e) {
+            log.error("序列化为 JSON 失败");
+        }
 
 
         return document;

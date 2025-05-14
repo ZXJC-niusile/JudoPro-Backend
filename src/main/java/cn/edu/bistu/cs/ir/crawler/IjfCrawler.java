@@ -1,7 +1,11 @@
 package cn.edu.bistu.cs.ir.crawler;
 
 
+import cn.edu.bistu.cs.ir.model.Photo;
+import cn.edu.bistu.cs.ir.model.PhotoEntity;
 import cn.edu.bistu.cs.ir.model.Player;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import us.codecraft.webmagic.Page;
@@ -10,6 +14,7 @@ import us.codecraft.webmagic.Site;
 import us.codecraft.webmagic.processor.PageProcessor;
 
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -82,13 +87,38 @@ public class IjfCrawler implements PageProcessor {
             String locationIco = page.getHtml().xpath("//div[@class='location']//img[@class='country-ico']/@src").get();
             String kg = page.getHtml().xpath("//div[@class='kg']/text()").get();
 
-            Player player = new Player(url.replace("https://www.ijf.org/judoka/", ""),
-                    name == null ? "未获取到名字" : name.trim(),
-                    age == null ? "未获取到年龄" : age.trim(),
-                    image.isEmpty() ? "未提供照片" : image.trim(),
-                    location == null ? "未提供地区" : location.trim(),
-                    locationIco == null ? "未提供地区Icon" : locationIco.trim(),
-                    kg == null ? "未提供公斤数" : kg.trim());
+            // 提取所有聚光灯下的 a 标签
+            List<String> links = page.getHtml().xpath("//div[@class='panel panel--spacing_bottom']//div[@class='picture-tile-list picture-tile-list--potraits padding']//a/@href").all();
+            List<String> titles = page.getHtml().xpath("//div[@class='panel panel--spacing_bottom']//div[@class='picture-tile-list picture-tile-list--potraits padding']//a/@data-title").all();
+
+            // 存储结果
+            List<Photo> underTheSpotlights = new ArrayList<>();
+            for (int i = 0; i < links.size(); i++) {
+                underTheSpotlights.add(new Photo(titles.get(i).substring(0, titles.get(i).indexOf("<br>")), links.get(i)));
+            }
+
+            // 提取所有赛事照片下的 a 标签
+            links = page.getHtml().xpath("//div[@class='panel']//div[@class='picture-tile-list padding']//a/@href").all();
+            titles = page.getHtml().xpath("//div[@class='panel']//div[@class='picture-tile-list padding']//a/@data-title").all();
+
+            // 存储结果
+            List<Photo> photos = new ArrayList<>();
+            for (int i = 0; i < links.size(); i++) {
+                photos.add(new Photo(titles.get(i).substring(0, titles.get(i).indexOf("<br>")), links.get(i)));
+            }
+
+            PhotoEntity photoEntity = new PhotoEntity(underTheSpotlights, photos);
+
+            // 照片
+            try {
+                ObjectMapper objectMapper = new ObjectMapper();
+                String json = objectMapper.writeValueAsString(photoEntity);
+                System.out.println("柔道家的照片：" + json);
+            } catch (JsonProcessingException e) {
+                log.error("序列化为 JSON 失败");
+            }
+
+            Player player = new Player(url.replace("https://www.ijf.org/judoka/", ""), name == null ? "未获取到名字" : name.trim(), age == null ? "未获取到年龄" : age.trim(), image.isEmpty() ? "未提供照片" : image.trim(), location == null ? "未提供地区" : location.trim(), locationIco == null ? "未提供地区Icon" : locationIco.trim(), kg == null ? "未提供公斤数" : kg.trim(), photoEntity);
 
             System.out.println("解析出的柔道家信息 = " + player);
 

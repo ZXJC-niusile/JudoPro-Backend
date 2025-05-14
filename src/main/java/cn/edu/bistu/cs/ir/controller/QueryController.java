@@ -61,6 +61,7 @@ public class QueryController {
                 record.put("LOCATION", doc.get("LOCATION"));
                 record.put("LOCATION_ICON", doc.get("LOCATION_ICON"));
                 record.put("KG", doc.get("KG"));
+                record.put("PHOTOS", doc.get("PHOTOS"));
 
                 results.add(record);
             }

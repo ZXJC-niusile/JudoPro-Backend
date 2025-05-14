@@ -47,4 +47,9 @@ public class Player {
      * 公斤数
      */
     private String kg;
+
+    /**
+     * 照片
+     */
+    private PhotoEntity photoEntity;
 }
