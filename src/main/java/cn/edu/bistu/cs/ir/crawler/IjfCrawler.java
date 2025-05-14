@@ -47,7 +47,7 @@ public class IjfCrawler implements PageProcessor {
                 String req = String.format("https://www.ijf.org/judoka?nation=%s&gender=both&category=all", location);
 
                 Request lowPriorityRequest = new Request(req);
-                lowPriorityRequest.setPriority(1);
+                lowPriorityRequest.setPriority(5);
 
                 page.addTargetRequest(lowPriorityRequest);
             }
@@ -63,7 +63,7 @@ public class IjfCrawler implements PageProcessor {
                 String req = String.format("https://www.ijf.org/judoka/%s", judoka.replace("/judoka/", ""));
 
                 Request highPriorityRequest = new Request(req);
-                highPriorityRequest.setPriority(10);
+                highPriorityRequest.setPriority(1);
 
                 page.addTargetRequest(highPriorityRequest);
             }
