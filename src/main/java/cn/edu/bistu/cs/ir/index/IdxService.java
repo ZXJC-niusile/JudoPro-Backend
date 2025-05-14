@@ -113,4 +113,9 @@ public class IdxService implements DisposableBean {
             log.info("尝试关闭索引失败");
         }
     }
+
+    public List<Document> queryByKw(String kw) {
+
+        return List.of();
+    }
 }
