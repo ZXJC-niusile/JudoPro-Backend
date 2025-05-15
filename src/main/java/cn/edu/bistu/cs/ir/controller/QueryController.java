@@ -20,7 +20,7 @@ import java.util.*;
  * @author chenruoyu
  */
 @RestController
-@RequestMapping(    "/query")
+@RequestMapping("/query")
 public class QueryController {
 
     private static final Logger log = LoggerFactory.getLogger(QueryController.class);
@@ -43,9 +43,8 @@ public class QueryController {
      * @param pageSize 页的大小，默认为10
      * @return 检索得到的结果记录，以<页面ID, 页面标题>二元组的形式返回
      */
-    @GetMapping(value = "/judoka", produces = "application/json;charset=UTF-8")
-    public QueryResponse<List<Map<String, String>>> queryJudokaByName(@RequestParam(name = "kw") String kw,
-                                                              @RequestParam(name = "country", defaultValue = "1") String country,
+    @GetMapping(value = "/kw", produces = "application/json;charset=UTF-8")
+    public QueryResponse<List<Map<String, String>>> queryByKw(@RequestParam(name = "kw") String kw,
                                                               @RequestParam(name = "pageNo", defaultValue = "1") int pageNo,
                                                               @RequestParam(name = "pageSize", defaultValue = "10") int pageSize) {
         try {
@@ -67,50 +66,8 @@ public class QueryController {
             }
             return QueryResponse.genSucc("检索成功", results);
         } catch (Exception e) {
-            if (log.isErrorEnabled()) {
-                log.error("检索过程中发生异常:[{}]", e.getMessage());
-            }
-            return QueryResponse.genErr("检索过程中发生异常");
-        }
-    }
-
-    /**
-     * 根据关键词对索引进行分页检索，
-     * 根据页号和页面大小，
-     * 返回指定页的数据记录
-     *
-     * @param kw       待检索的关键词
-     * @param pageNo   页号，默认为1
-     * @param pageSize 页的大小，默认为10
-     * @return 检索得到的结果记录，以<页面ID, 页面标题>二元组的形式返回
-     */
-    @GetMapping(value = "/event", produces = "application/json;charset=UTF-8")
-    public QueryResponse<List<Map<String, String>>> queryEvent(@RequestParam(name = "kw") String kw,
-                                                                      @RequestParam(name = "country", defaultValue = "1") String country,
-                                                                      @RequestParam(name = "pageNo", defaultValue = "1") int pageNo,
-                                                                      @RequestParam(name = "pageSize", defaultValue = "10") int pageSize) {
-        try {
-            //TODO 请大家思考如何在queryByKw函数中添加分页参数
-            List<Document> docs = idxService.queryByKw(kw);
-            List<Map<String, String>> results = new ArrayList<>();
-            for (Document doc : docs) {
-                Map<String, String> record = new HashMap<>();
-                record.put("ID", doc.get("ID"));
-                record.put("NAME", doc.get("NAME"));
-                record.put("AGE", doc.get("AGE"));
-                record.put("IMAGE", doc.get("IMAGE"));
-                record.put("LOCATION", doc.get("LOCATION"));
-                record.put("LOCATION_ICON", doc.get("LOCATION_ICON"));
-                record.put("KG", doc.get("KG"));
-
-                results.add(record);
-            }
-            return QueryResponse.genSucc("检索成功", results);
-        } catch (Exception e) {
             log.error("检索过程中发生异常:[{}]", e.getMessage());
             return QueryResponse.genErr("检索过程中发生异常");
         }
     }
-
-
 }
