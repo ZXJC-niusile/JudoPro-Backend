@@ -4,11 +4,8 @@ import cn.edu.bistu.cs.ir.config.Config;
 import cn.edu.bistu.cs.ir.utils.StringUtil;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
-import org.apache.lucene.document.*;
-import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.index.Term;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.index.*;
 import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.*;
 import org.apache.lucene.store.Directory;
@@ -23,12 +20,8 @@ import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
-/**
- * 面向<a href="https://lucene.apache.org/">Lucene</a>
- * 索引读、写的服务类
- * @author chenruoyu
- */
 @Component
 public class IdxService implements DisposableBean {
 
@@ -54,11 +47,11 @@ public class IdxService implements DisposableBean {
     }
 
     public boolean addDocument(String idFld, String id, Document doc){
-        if(writer==null||doc==null){
+        if(writer == null || doc == null){
             log.error("Writer对象或文档对象为空，无法添加文档到索引中");
             return false;
         }
-        if(StringUtil.isEmpty(idFld)||StringUtil.isEmpty(id)){
+        if(StringUtil.isEmpty(idFld) || StringUtil.isEmpty(id)){
             log.error("ID字段名或ID字段值为空，无法添加文档到索引中");
             return false;
         }
@@ -74,36 +67,44 @@ public class IdxService implements DisposableBean {
         }
     }
 
-    /**
-     * 根据关键词对索引内容进行检索，并将检索结果返回
-     * @param kw 待检索的关键词
-     * @return 检索得到的文档列表
-     */
-    public List<Document> queryByKw(String kw) throws Exception{
-        //打开准实时索引Reader
+    public List<Document> queryByParams(String kw, String age, String kg, String location) throws Exception {
         DirectoryReader reader = DirectoryReader.open(writer);
         IndexSearcher searcher = new IndexSearcher(reader);
         Analyzer analyzer = DEFAULT_ANALYZER.getConstructor().newInstance();
-        QueryParser parser = new QueryParser("NAME", analyzer);
-        Query query = parser.parse(kw);
-        TopDocs docs =searcher.search(query, 10);
-        ScoreDoc[] hits = docs.scoreDocs;
+
+        BooleanQuery.Builder builder = new BooleanQuery.Builder();
+
+        if (kw != null && !kw.trim().isEmpty()) {
+            QueryParser parser = new QueryParser("NAME", analyzer);
+            Query nameQuery = parser.parse(kw);
+            builder.add(nameQuery, BooleanClause.Occur.MUST);
+        }
+
+        if (age != null && !age.trim().isEmpty()) {
+            builder.add(new TermQuery(new Term("AGE", age)), BooleanClause.Occur.MUST);
+        }
+
+        if (kg != null && !kg.trim().isEmpty()) {
+            builder.add(new TermQuery(new Term("KG", kg)), BooleanClause.Occur.MUST);
+        }
+
+        if (location != null && !location.trim().isEmpty()) {
+            builder.add(new TermQuery(new Term("LOCATION", location.toLowerCase())), BooleanClause.Occur.MUST);
+        }
+
+        Query query = builder.build();
+        TopDocs docs = searcher.search(query, 100); // 返回前100个结果
         List<Document> results = new ArrayList<>();
-        for (ScoreDoc doc : hits) {
+        for (ScoreDoc doc : docs.scoreDocs) {
             results.add(searcher.doc(doc.doc));
         }
+
         return results;
     }
 
-    //TODO 请大家在这里添加更多的检索函数，如针对发表时间的范围检索等，
-    // 添加了检索函数后，还需要相应地在Controller中添加接口
-
-
     @Override
-    public void destroy(){
-        if(this.writer==null){
-            return;
-        }
+    public void destroy() {
+        if(this.writer == null) return;
         try {
             log.info("索引关闭");
             writer.close();
@@ -111,5 +112,10 @@ public class IdxService implements DisposableBean {
             e.printStackTrace();
             log.info("尝试关闭索引失败");
         }
+    }
+
+    public List<Document> queryByKw(String kw) {
+
+        return List.of();
     }
 }

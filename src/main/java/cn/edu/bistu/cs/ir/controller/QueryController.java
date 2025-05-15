@@ -65,7 +65,9 @@ public class QueryController {
             }
             return QueryResponse.genSucc("检索成功", results);
         } catch (Exception e) {
-            log.error("检索过程中发生异常:[{}]", e.getMessage());
+            if (log.isErrorEnabled()) {
+                log.error("检索过程中发生异常:[{}]", e.getMessage());
+            }
             return QueryResponse.genErr("检索过程中发生异常");
         }
     }
