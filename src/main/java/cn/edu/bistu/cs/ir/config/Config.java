@@ -42,6 +42,11 @@ public class Config {
     private String idx;
 
     /**
+     * 照片下载存储的目录
+     */
+    private String photoDownload;
+
+    /**
      * 网络爬虫：默认的UserAgent
      */
     private String agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.5 Safari/605.1.15";
@@ -67,6 +72,7 @@ public class Config {
         createDir(home);
         createDir(idx);
         createDir(crawler);
+        createDir(photoDownload);
     }
 
     private void createDir(String dir){

@@ -3,6 +3,7 @@ package cn.edu.bistu.cs.ir.crawler;
 import cn.edu.bistu.cs.ir.config.Config;
 import cn.edu.bistu.cs.ir.index.IdxService;
 import cn.edu.bistu.cs.ir.index.LucenePipeline;
+import cn.edu.bistu.cs.ir.utils.PhotoDownloader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,13 +27,15 @@ public class CrawlerService{
     private static final Logger log = LoggerFactory.getLogger(CrawlerService.class);
 
     private final Config config;
-
     private final IdxService idxService;
+    private final PhotoDownloader photoDownloader;
 
     public CrawlerService(@Autowired Config config,
-                          @Autowired IdxService idxService){
+                          @Autowired IdxService idxService,
+                          @Autowired PhotoDownloader photoDownloader){
         this.config = config;
         this.idxService = idxService;
+        this.photoDownloader = photoDownloader;
     }
 
     private Spider spider = null;
@@ -58,7 +61,8 @@ public class CrawlerService{
                 .setSleepTime(config.getSleepTime())
                 .setUserAgent(config.getAgent());
         this.spider = Spider.create(new IjfCrawler(site));
-        spider.addPipeline(new LucenePipeline(idxService));
+        // Pass PhotoDownloader and Config to LucenePipeline
+        spider.addPipeline(new LucenePipeline(idxService, photoDownloader, config));
         spider.addPipeline(new JsonFilePipeline(config.getCrawler()));
         spider.setScheduler(new PriorityScheduler());
         spider.thread(1);

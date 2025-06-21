@@ -1,7 +1,11 @@
 package cn.edu.bistu.cs.ir.index;
 
+import cn.edu.bistu.cs.ir.config.Config;
 import cn.edu.bistu.cs.ir.crawler.IjfCrawler;
+import cn.edu.bistu.cs.ir.model.Photo;
+import cn.edu.bistu.cs.ir.model.PhotoEntity;
 import cn.edu.bistu.cs.ir.model.Player;
+import cn.edu.bistu.cs.ir.utils.PhotoDownloader;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.lucene.document.*;
@@ -22,17 +26,24 @@ public class LucenePipeline implements Pipeline {
     private static final Logger log = LoggerFactory.getLogger(LucenePipeline.class);
 
     private final IdxService idxService;
+    private final PhotoDownloader photoDownloader;
+    private final String photoDownloadPath;
 
-    public LucenePipeline(IdxService idxService) {
+    public LucenePipeline(IdxService idxService, PhotoDownloader photoDownloader, Config config) {
         log.info("初始化LucenePipeline模块");
         this.idxService = idxService;
+        this.photoDownloader = photoDownloader;
+        this.photoDownloadPath = config.getPhotoDownload();
+        if (photoDownloadPath == null || photoDownloadPath.isEmpty()) {
+            log.warn("Photo download path is not configured. Automatic photo downloads will be disabled.");
+        }
     }
 
     @Override
     public void process(ResultItems resultItems, Task task) {
         Player player = resultItems.get(IjfCrawler.RESULT_ITEM_KEY);
         if (player == null) {
-            log.error("无法从爬取的结果中提取到Player对象");
+            log.warn("无法从爬取的结果中提取到Player对象, resultItems URL: {}", resultItems.getRequest().getUrl());
             return;
         }
         String id = player.getId();
@@ -42,6 +53,34 @@ public class LucenePipeline implements Pipeline {
             log.error("无法将ID为[{}]的柔道家信息写入索引", id);
         } else {
             log.info("成功将ID为[{}]的柔道家信息写入索引", id);
+        }
+
+        // Download photos if path is configured
+        if (photoDownloadPath != null && !photoDownloadPath.isEmpty() && player.getPhotoEntity() != null) {
+            log.debug("Starting photo download process for judoka: {}", player.getName());
+            PhotoEntity photoEntity = player.getPhotoEntity();
+            String judokaName = (player.getName() == null || player.getName().trim().isEmpty()) ? "unknown_judoka" : player.getName();
+
+            if (photoEntity.getUnderTheSpotlights() != null) {
+                for (Photo photo : photoEntity.getUnderTheSpotlights()) {
+                    if (photo.getLink() != null && !photo.getLink().isEmpty()) {
+                        photoDownloader.downloadPhoto(photo.getLink(), judokaName, photo.getTitle(), photoDownloadPath);
+                    } else {
+                        log.warn("Empty link for 'Under The Spotlights' photo with title: {}", photo.getTitle());
+                    }
+                }
+            }
+
+            if (photoEntity.getPhotos() != null) {
+                for (Photo photo : photoEntity.getPhotos()) {
+                    if (photo.getLink() != null && !photo.getLink().isEmpty()) {
+                        photoDownloader.downloadPhoto(photo.getLink(), judokaName, photo.getTitle(), photoDownloadPath);
+                    } else {
+                        log.warn("Empty link for 'Event Photos' photo with title: {}", photo.getTitle());
+                    }
+                }
+            }
+            log.debug("Finished photo download process for judoka: {}", player.getName());
         }
     }
 

@@ -13,3 +13,12 @@ spring:
       ddl-auto: update  # 自动建表，开发环境推荐使用
     show-sql: true
     database-platform: org.hibernate.dialect.MySQL8Dialect
+
+irdemo:
+  dir:
+    home: "./ir_demo_home" # Example base directory for the application data
+    crawler: ${irdemo.dir.home}/crawler_data # Example path for crawler data
+    idx: ${irdemo.dir.home}/index_data # Example path for Lucene index
+    # New configuration for photo download path
+    # Users should change this to their desired local directory
+    photo-download: ${irdemo.dir.home}/downloaded_photos
