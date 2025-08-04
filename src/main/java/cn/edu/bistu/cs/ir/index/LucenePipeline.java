@@ -2,8 +2,8 @@ package cn.edu.bistu.cs.ir.index;
 
 import cn.edu.bistu.cs.ir.crawler.IjfCrawler;
 import cn.edu.bistu.cs.ir.model.Player;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import cn.edu.bistu.cs.ir.utils.AgeUtils;
+import cn.edu.bistu.cs.ir.utils.JsonUtils;
 import org.apache.lucene.document.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,6 +53,16 @@ public class LucenePipeline implements Pipeline {
         document.add(new TextField("NAME", player.getName(), Field.Store.YES));
         // 年龄
         document.add(new TextField("AGE", player.getAge(), Field.Store.YES));
+        // 年龄数字字段（用于范围查询）
+        try {
+            Integer ageNum = AgeUtils.parseAge(player.getAge());
+            if (ageNum != null) {
+                document.add(new IntPoint("AGE_NUM", ageNum));
+                document.add(new StoredField("AGE_NUM", ageNum));
+            }
+        } catch (Exception e) {
+            log.warn("无法解析年龄数字，ID: {}", player.getId());
+        }
         // 照片 URL
         document.add(new TextField("IMAGE", player.getImage(), Field.Store.YES));
         // 地区
@@ -62,15 +72,13 @@ public class LucenePipeline implements Pipeline {
         // 公斤数
         document.add(new TextField("KG", player.getKg(), Field.Store.YES));
 
-        // 照片
-        try {
-            ObjectMapper objectMapper = new ObjectMapper();
-            String json = objectMapper.writeValueAsString(player.getPhotoEntity());
+        // 使用JsonUtils工具类进行JSON序列化，避免重复创建ObjectMapper
+        String json = JsonUtils.toJson(player.getPhotoEntity());
+        if (json != null) {
             document.add(new TextField("PHOTOS", json, Field.Store.YES));
-        } catch (JsonProcessingException e) {
-            log.error("序列化为 JSON 失败");
+        } else {
+            log.warn("无法将Player的photoEntity序列化为JSON，ID: {}", player.getId());
         }
-
 
         return document;
     }

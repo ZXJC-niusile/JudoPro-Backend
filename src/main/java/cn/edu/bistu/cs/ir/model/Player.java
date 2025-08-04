@@ -1,6 +1,5 @@
 package cn.edu.bistu.cs.ir.model;
 
-import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -9,19 +8,14 @@ import lombok.NoArgsConstructor;
 /**
  * 面向国际柔道联盟的模型类
  */
-@Entity
-@Table(name = "player")
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class Player {
-
     /**
      * 页面的唯一ID
      */
-    @Id
-    @Column(length = 64)
     private String id;
 
     /**
@@ -47,7 +41,6 @@ public class Player {
     /**
      * 地区 Icon
      */
-    @Column(name = "location_icon")
     private String locationIcon;
 
     /**
@@ -56,14 +49,7 @@ public class Player {
     private String kg;
 
     /**
-     * 照片（程序中使用，不存数据库）
+     * 照片
      */
-    @Transient
     private PhotoEntity photoEntity;
-
-    /**
-     * 照片 JSON（存储在数据库中）
-     */
-    @Column(name = "photos_json", columnDefinition = "TEXT")
-    private String photosJson;
 }
