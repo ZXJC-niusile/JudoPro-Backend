@@ -15,7 +15,7 @@ import us.codecraft.webmagic.pipeline.Pipeline;
  * 基于Lucene的WebMagic Pipeline,
  * 用于将抓取的数据写入本地的Lucene索引
  *
- * @author ruoyuchen
+ * @author zhaxijiancuo
  */
 public class LucenePipeline implements Pipeline {
 

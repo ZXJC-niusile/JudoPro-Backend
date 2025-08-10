@@ -15,7 +15,7 @@ import java.nio.file.Path;
 
 /**
  * 系统配置信息类
- * @author chenruoyu
+ * @author zhaxijiancuo
  */
 @ConfigurationProperties(prefix = "irdemo.dir")
 @Component

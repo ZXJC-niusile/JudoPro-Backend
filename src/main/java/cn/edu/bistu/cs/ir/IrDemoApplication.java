@@ -6,7 +6,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 
 /**
  * 基于SpringBoot的信息检索示例工程启动器
- * @author chenruoyu
+ * @author zhaxijiancuo
  */
 @EnableAsync
 @SpringBootApplication

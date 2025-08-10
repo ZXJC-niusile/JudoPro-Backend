@@ -9,7 +9,7 @@ import org.slf4j.LoggerFactory;
  * JSON工具类，提供单例的ObjectMapper实例
  * 避免重复创建ObjectMapper的性能问题
  * 
- * @author system
+ * @author zhaxijiancuo
  */
 public class JsonUtils {
     
@@ -70,4 +70,4 @@ public class JsonUtils {
     public static ObjectMapper getObjectMapper() {
         return OBJECT_MAPPER;
     }
-} 
+}

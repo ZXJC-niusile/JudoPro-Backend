@@ -26,7 +26,7 @@ import java.util.*;
  * 面向检索服务接口的控制器类
  * Restful Web Services/Rest风格的Web服务
  *
- * @author chenruoyu
+ * @author zhaxijiancuo
  */
 @RestController
 @RequestMapping("/query")

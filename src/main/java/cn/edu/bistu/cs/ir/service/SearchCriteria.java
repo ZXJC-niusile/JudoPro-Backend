@@ -8,7 +8,7 @@ import cn.edu.bistu.cs.ir.model.WeightClass;
  * 检索条件对象，用于封装多个检索参数
  * 支持组合条件检索，包括年龄范围、体重范围检索、模糊匹配检索
  * 
- * @author chenruoyu
+ * @author zhaxijiancuo
  */
 public class SearchCriteria {
     

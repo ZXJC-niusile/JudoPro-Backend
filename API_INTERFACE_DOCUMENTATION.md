@@ -536,3 +536,32 @@ curl "http://localhost:8080/query/countries?continent=ASIA"
 - Others功能（动态管理国家分类）
 
 所有接口都支持分页查询，提供统一的响应格式和错误处理机制，为前端开发提供了完整的接口支持。 
+
+### 用户注册接口
+- 路径：`/user/register`
+- 方法：POST
+- 参数：
+  - username（string）：用户名
+  - email（string）：邮箱
+  - password（string）：密码（需为字母和数字组合，至少6位）
+- 返回：注册成功的用户信息
+
+### 用户登录接口（邮箱登录）
+- 路径：`/user/login`
+- 方法：POST
+- 参数：
+  - email（string）：邮箱
+  - password（string）：密码
+- 返回：登录成功的用户信息，失败返回401
+
+### QQ/微信授权登录
+- 路径：`/oauth2/authorization/qq` 或 `/oauth2/authorization/wechat`
+- 方法：GET
+- 参数：无，跳转至第三方授权页面
+- 返回：授权成功后自动登录，无需输入密码
+
+### 获取当前用户信息
+- 路径：`/user/me`
+- 方法：GET
+- 参数：无
+- 返回：当前登录用户信息

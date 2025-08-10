@@ -4,7 +4,8 @@ package cn.edu.bistu.cs.ir.crawler;
 import cn.edu.bistu.cs.ir.model.Photo;
 import cn.edu.bistu.cs.ir.model.PhotoEntity;
 import cn.edu.bistu.cs.ir.model.Player;
-import cn.edu.bistu.cs.ir.utils.JsonUtils;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import us.codecraft.webmagic.Page;
@@ -105,10 +106,13 @@ public class IjfCrawler implements PageProcessor {
 
             PhotoEntity photoEntity = new PhotoEntity(underTheSpotlights, photos);
 
-            // 使用JsonUtils工具类进行JSON序列化，避免重复创建ObjectMapper
-            String json = JsonUtils.toJson(photoEntity);
-            if (json != null) {
+            // 照片
+            try {
+                ObjectMapper objectMapper = new ObjectMapper();
+                String json = objectMapper.writeValueAsString(photoEntity);
                 System.out.println("柔道家的照片：" + json);
+            } catch (JsonProcessingException e) {
+                log.error("序列化为 JSON 失败");
             }
 
             Player player = new Player(url.replace("https://www.ijf.org/judoka/", ""), name == null ? "未获取到名字" : name.trim(), age == null ? "未获取到年龄" : age.trim(), image.isEmpty() ? "未提供照片" : image.trim(), location == null ? "未提供地区" : location.trim(), locationIco == null ? "未提供地区Icon" : locationIco.trim(), kg == null ? "未提供公斤数" : kg.trim(), photoEntity);
@@ -118,7 +122,7 @@ public class IjfCrawler implements PageProcessor {
             page.putField(RESULT_ITEM_KEY, player);
         } else {
             log.warn("暂不支持的URL地址:[{}]", url);
-            page.setSkip(true);
+              page.setSkip(true);
         }
     }
 

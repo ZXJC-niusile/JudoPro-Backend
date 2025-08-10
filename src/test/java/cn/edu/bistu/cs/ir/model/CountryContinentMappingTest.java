@@ -9,7 +9,7 @@ import java.util.List;
  * CountryContinentMapping单元测试
  * 测试others功能
  * 
- * @author chenruoyu
+ * @author zhaxijiancuo
  */
 public class CountryContinentMappingTest {
 
@@ -182,4 +182,4 @@ public class CountryContinentMappingTest {
         assertFalse(CountryContinentMapping.isCountryInMainList(null, Continent.ASIA));
         assertFalse(CountryContinentMapping.isCountryInOthers(null, Continent.ASIA));
     }
-} 
+}

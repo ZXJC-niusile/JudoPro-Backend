@@ -2,7 +2,7 @@ package cn.edu.bistu.cs.ir.utils;
 
 /**
  * Rest风格的知识库查询接口响应对象
- * @author chenruoyu
+ * @author zhaxijiancuo
  */
 public class QueryResponse<T> {
 

@@ -2,7 +2,7 @@ package cn.edu.bistu.cs.ir.model;
 
 /**
  * 学校信息索引的字段枚举类型
- * @author chenruoyu
+ * @author zhaxijiancuo
  */
 public enum IdxFields {
     /**

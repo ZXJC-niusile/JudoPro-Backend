@@ -36,7 +36,7 @@ import java.util.Set;
 /**
  * 面向<a href="https://lucene.apache.org/">Lucene</a>
  * 索引读、写的服务类
- * @author chenruoyu
+ * @author zhaxijiancuo
  */
 @Component
 public class IdxService implements DisposableBean {

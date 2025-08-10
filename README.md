@@ -2,6 +2,7 @@
 
 本工程在 [ZXJC-niusile/ir_ijf](https://github.com/ZXJC-niusile/ir_ijf) 和 [ir_demo](https://github.com/ruoyu-chen/ir_demo) 的基础上实现了对 [IJF](https://www.ijf.org/) 的适配
 
+本项目是一个基于Spring Boot + Lucene + WebMagic的柔道运动员信息检索系统，实现了从国际柔道联盟官网爬取运动员数据、建立Lucene索引、提供多种检索方式等功能。
 **仅用于学习和研究使用！**
 
 # 软件包说明

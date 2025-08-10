@@ -18,7 +18,7 @@ import static us.codecraft.webmagic.Spider.Status.Stopped;
 
 /**
  * 面向爬虫的服务类
- * @author chenruoyu
+ * @author zhaxijiancuo
  */
 @Component
 public class CrawlerService{

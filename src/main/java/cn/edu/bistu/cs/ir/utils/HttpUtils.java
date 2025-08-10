@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 基于OkHttp设计的用于下载网络上指定页面对应的HTML代码的工具类
- * @author chenruoyu
+ * @author zhaxijiancuo
  */
 public class HttpUtils {
 

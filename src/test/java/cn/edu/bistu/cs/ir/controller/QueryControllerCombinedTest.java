@@ -15,7 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 组合条件检索API集成测试
  * 
- * @author chenruoyu
+ * @author zhaxijiancuo
  */
 @SpringBootTest(classes = IrDemoApplication.class)
 @ActiveProfiles("test")
@@ -152,4 +152,4 @@ public class QueryControllerCombinedTest {
                 .andExpect(jsonPath("$.data.pageNo").value(2))
                 .andExpect(jsonPath("$.data.pageSize").value(5));
     }
-} 
+}

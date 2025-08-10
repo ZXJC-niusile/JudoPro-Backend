@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * SearchCriteria年龄范围和体重范围检索测试
  * 
- * @author chenruoyu
+ * @author zhaxijiancuo
  */
 public class SearchCriteriaRangeTest {
 
@@ -231,4 +231,4 @@ public class SearchCriteriaRangeTest {
         assertTrue(result.contains("minWeight=60.0"));
         assertTrue(result.contains("maxWeight=80.0"));
     }
-} 
+}
