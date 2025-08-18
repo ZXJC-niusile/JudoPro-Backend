@@ -537,7 +537,9 @@ curl "http://localhost:8080/query/countries?continent=ASIA"
 
 所有接口都支持分页查询，提供统一的响应格式和错误处理机制，为前端开发提供了完整的接口支持。 
 
-### 用户注册接口
+### 用户管理接口
+
+### 用户注册接口（邮箱注册）
 - 路径：`/user/register`
 - 方法：POST
 - 参数：
@@ -554,14 +556,221 @@ curl "http://localhost:8080/query/countries?continent=ASIA"
   - password（string）：密码
 - 返回：登录成功的用户信息，失败返回401
 
-### QQ/微信授权登录
-- 路径：`/oauth2/authorization/qq` 或 `/oauth2/authorization/wechat`
-- 方法：GET
-- 参数：无，跳转至第三方授权页面
-- 返回：授权成功后自动登录，无需输入密码
-
 ### 获取当前用户信息
 - 路径：`/user/me`
 - 方法：GET
 - 参数：无
 - 返回：当前登录用户信息
+
+## 13. 用户文件管理接口 ⭐ 新增
+
+### 13.1 文件上传接口
+**接口地址**: `POST /api/upload`
+
+**功能说明**: 用户上传文件，支持图片、视频、文档等多种文件类型
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| file | MultipartFile | 是 | 上传的文件 |
+| description | String | 否 | 文件描述 |
+
+**请求示例**:
+```bash
+POST /api/upload
+Content-Type: multipart/form-data
+
+--boundary
+Content-Disposition: form-data; name="file"; filename="example.jpg"
+Content-Type: image/jpeg
+
+[文件内容]
+--boundary
+Content-Disposition: form-data; name="description"
+
+这是一张示例图片
+--boundary--
+```
+
+**响应示例**:
+```json
+{
+  "success": true,
+  "message": "文件上传成功",
+  "data": {
+    "id": 1,
+    "originalFilename": "example.jpg",
+    "fileUrl": "/uploads/2024/01/15/uuid_example.jpg",
+    "fileType": "IMAGE",
+    "fileSize": 1024000,
+    "uploadTime": "2024-01-15T10:30:00"
+  }
+}
+```
+
+### 13.2 用户文件列表接口
+**接口地址**: `GET /api/files`
+
+**功能说明**: 获取当前用户的文件列表，支持分页、搜索和筛选
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| pageNo | Integer | 否 | 页码，从1开始，默认1 |
+| pageSize | Integer | 否 | 每页大小，默认10，最大100 |
+| fileType | String | 否 | 文件类型筛选：IMAGE, VIDEO, DOCUMENT, OTHER |
+| keyword | String | 否 | 文件名搜索关键词 |
+
+**请求示例**:
+```bash
+GET /api/files?pageNo=1&pageSize=10&fileType=IMAGE&keyword=photo
+```
+
+**响应示例**:
+```json
+{
+  "success": true,
+  "message": "获取文件列表成功",
+  "data": {
+    "data": [
+      {
+        "id": 1,
+        "originalFilename": "photo1.jpg",
+        "fileUrl": "/uploads/2024/01/15/uuid_photo1.jpg",
+        "fileType": "IMAGE",
+        "fileSize": 1024000,
+        "description": "示例图片",
+        "downloadCount": 5,
+        "uploadTime": "2024-01-15T10:30:00",
+        "lastAccessTime": "2024-01-15T15:20:00"
+      }
+    ],
+    "pageInfo": {
+      "pageNo": 1,
+      "pageSize": 10,
+      "total": 25,
+      "totalPages": 3,
+      "hasPrevious": false,
+      "hasNext": true
+    },
+    "statistics": {
+      "totalFiles": 25,
+      "totalSize": 52428800,
+      "imageCount": 15,
+      "videoCount": 5,
+      "documentCount": 3,
+      "otherCount": 2
+    }
+  }
+}
+```
+
+### 13.3 文件下载接口
+**接口地址**: `GET /api/files/{fileId}/download`
+
+**功能说明**: 下载指定文件，用户只能下载自己的文件
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| fileId | Long | 是 | 文件ID（路径参数） |
+
+**请求示例**:
+```bash
+GET /api/files/1/download
+```
+
+**响应**: 直接返回文件流，设置适当的Content-Type和Content-Disposition头
+
+### 13.4 文件删除接口
+**接口地址**: `DELETE /api/files/{fileId}`
+
+**功能说明**: 删除指定文件，用户只能删除自己的文件（软删除）
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| fileId | Long | 是 | 文件ID（路径参数） |
+
+**请求示例**:
+```bash
+DELETE /api/files/1
+```
+
+**响应示例**:
+```json
+{
+  "success": true,
+  "message": "文件删除成功",
+  "data": null
+}
+```
+
+### 13.5 文件统计接口
+**接口地址**: `GET /api/files/statistics`
+
+**功能说明**: 获取当前用户的文件统计信息
+
+**请求参数**: 无
+
+**请求示例**:
+```bash
+GET /api/files/statistics
+```
+
+**响应示例**:
+```json
+{
+  "success": true,
+  "message": "获取统计信息成功",
+  "data": {
+    "totalFiles": 25,
+    "totalSize": 52428800,
+    "totalSizeFormatted": "50.0 MB",
+    "imageCount": 15,
+    "videoCount": 5,
+    "documentCount": 3,
+    "otherCount": 2,
+    "totalDownloads": 150,
+    "recentUploads": 3
+  }
+}
+```
+
+### 13.6 错误响应
+
+**文件不存在**:
+```json
+{
+  "success": false,
+  "message": "文件不存在或已被删除",
+  "data": null
+}
+```
+
+**权限不足**:
+```json
+{
+  "success": false,
+  "message": "您没有权限访问此文件",
+  "data": null
+}
+```
+
+**文件上传失败**:
+```json
+{
+  "success": false,
+  "message": "文件上传失败：文件大小超过限制",
+  "data": null
+}
+```
+
+### 13.7 注意事项
+
+1. **用户隔离**: 所有文件操作都基于当前登录用户，确保用户只能操作自己的文件
+2. **文件类型**: 支持常见的图片、视频、文档格式，具体支持的格式由后端配置决定
+3. **文件大小**: 单个文件大小限制为50MB
+4. **软删除**: 文件删除采用软删除机制，不会立即从磁盘删除
+5. **下载统计**: 每次文件下载都会更新下载次数和最后访问时间
+6. **分页查询**: 文件列表支持分页查询，避免一次性加载大量数据

@@ -2,14 +2,17 @@
 
 ## 项目概述
 
-本项目是一个基于Spring Boot + Lucene + WebMagic的柔道运动员信息检索系统，实现了从国际柔道联盟官网爬取运动员数据、建立Lucene索引、提供多种检索方式等功能。
+本项目是一个基于Spring Boot + Lucene + WebMagic + MySQL的柔道运动员信息检索系统，实现了从国际柔道联盟官网爬取运动员数据、建立Lucene索引、提供多种检索方式、用户管理等功能。系统采用混合存储架构：Lucene用于运动员数据的高效检索，MySQL用于用户管理数据的结构化存储。
 
 ## 技术栈
 
-- **后端框架**: Spring Boot
-- **搜索引擎**: Apache Lucene
-- **爬虫框架**: WebMagic
-- **数据存储**: Lucene索引
+- **后端框架**: Spring Boot 2.x
+- **搜索引擎**: Apache Lucene 8.11.1
+- **爬虫框架**: WebMagic 0.7.6
+- **数据库**: MySQL 8.0
+- **ORM框架**: Spring Data JPA
+- **安全框架**: Spring Security
+- **数据存储**: Lucene索引（运动员数据） + MySQL数据库（用户管理）
 - **构建工具**: Maven
 
 ## 核心功能
@@ -18,49 +21,67 @@
 - 爬取国际柔道联盟官网运动员数据
 - 支持增量爬取和全量爬取
 - 数据清洗和格式化处理
+- 爬取数据自动构建Lucene索引
 
 ### 2. 索引构建功能
 - 基于Lucene的全文索引构建
 - 支持多字段索引（姓名、年龄、体重、国家等）
 - 数值字段索引（年龄、体重范围查询）
+- 高效的索引存储和检索
 
-### 3. 检索功能
+### 3. 用户管理功能 ⭐ 新增
+- **邮箱注册登录**: 基于邮箱+密码的安全认证
+- **密码加密**: 使用Spring Security BCrypt加密
+- **用户信息管理**: 支持用户资料和头像管理
+- **会话管理**: 安全的用户会话控制
 
-#### 3.1 基础检索
+### 4. 用户文件管理功能 ⭐ 新增
+- **文件上传**: 支持图片、视频等多种文件类型上传
+- **文件存储**: 文件信息存储到数据库，支持用户隔离
+- **文件列表**: 用户只能查看和管理自己的文件
+- **文件下载**: 支持文件下载并统计下载次数
+- **文件删除**: 支持软删除和物理删除
+- **文件搜索**: 支持按文件名搜索和文件类型筛选
+- **分页支持**: 文件列表支持分页显示
+- **统计功能**: 提供用户文件统计信息
+
+### 5. 检索功能
+
+#### 4.1 基础检索
 - **关键词检索**: `GET /query/kw?kw=zhang&pageNo=1&pageSize=10`
 - **年龄组别检索**: `GET /query/ageGroup?ageGroup=SENIOR&pageNo=1&pageSize=10`
 - **体重级别检索**: `GET /query/weightClass?weightClass=-73&pageNo=1&pageSize=10`
 - **大洲检索**: `GET /query/continent?continent=ASIA&pageNo=1&pageSize=10`
 - **国家检索**: `GET /query/country?country=China&pageNo=1&pageSize=10`
 
-#### 3.2 范围检索
+#### 4.2 范围检索
 - **年龄范围检索**: `GET /query/ageRange?minAge=20&maxAge=30&pageNo=1&pageSize=10`
 - **体重范围检索**: `GET /query/weightRange?minWeight=60.0&maxWeight=80.0&pageNo=1&pageSize=10`
 
-#### 3.3 模糊匹配检索 ⭐ 新增
+#### 4.3 模糊匹配检索 ⭐ 新增
 - **模糊匹配检索**: `GET /query/fuzzy?fuzzyKeyword=zhang&similarity=0.8&page=0&size=10`
   - 支持拼写错误的模糊匹配
   - 支持通配符匹配(*和?)
   - 支持前缀匹配
   - 支持相似度阈值控制
 
-#### 3.4 高级搜索 ⭐ 新增
+#### 4.4 高级搜索 ⭐ 新增
 - **高级搜索**: `GET /query/advanced?keyword=zhang&fuzzyKeyword=li&similarity=0.7&ageGroup=SENIOR&minAge=20&maxAge=30&weightClass=LIGHTWEIGHT&minWeight=60.0&maxWeight=80.0&continent=ASIA&country=China&page=0&size=10`
   - 支持多字段任意组合
   - 支持布尔逻辑操作
   - 支持参数验证
   - 支持复杂查询条件
 
-#### 3.5 智能搜索 ⭐ 新增
+#### 4.5 智能搜索 ⭐ 新增
 - **智能搜索**: `GET /query/smart?keyword=zhang&page=0&size=10`
   - 自动结合精确匹配和模糊匹配
   - 智能权重排序
   - 优先返回最相关结果
 
-#### 3.6 组合检索
+#### 4.6 组合检索
 - **组合条件检索**: `GET /query/combined?keyword=zhang&ageGroup=SENIOR&weightClass=-73&continent=ASIA&pageNo=1&pageSize=10`
 
-### 4. 数据获取功能
+### 6. 数据获取功能
 - **获取大洲列表**: `GET /query/continents`
 - **获取国家列表**: `GET /query/countries?continent=ASIA`
 - **获取年龄组别列表**: `GET /query/ageGroups`
@@ -68,7 +89,7 @@
 - **获取Others国家列表**: `GET /query/others?continent=ASIA`
 - **动态添加Others国家**: `GET /query/addOthers?country=NewCountry&continent=ASIA`
 
-### 5. Others功能
+### 7. Others功能
 - 为各大洲动态添加"others"国家
 - 大洲检索时自动包含该大洲下的所有国家（包括others）
 - 支持Others国家的管理
@@ -77,6 +98,8 @@
 
 ### 1. 模型类 (model包)
 - **Player**: 运动员实体类
+- **User**: 用户实体类，支持邮箱登录和用户信息管理
+- **UserFile**: 用户文件实体类，存储文件信息和元数据 ⭐ 新增
 - **AgeGroup**: 年龄组别枚举（CADET, JUNIOR, SENIOR, VETERAN）
 - **WeightClass**: 体重级别枚举（EXTRA_LIGHTWEIGHT, LIGHTWEIGHT, MIDDLEWEIGHT等）
 - **Continent**: 大洲枚举（ASIA, EUROPE, AFRICA等）
@@ -89,6 +112,12 @@
   - 支持体重级别、体重范围
   - 支持大洲、国家
   - 提供参数验证方法
+- **UserFileService**: 用户文件管理服务类 ⭐ 新增
+  - 文件信息保存和更新
+  - 文件列表查询（支持分页、筛选、搜索）
+  - 文件下载统计
+  - 文件删除（软删除和物理删除）
+  - 用户文件统计信息
 
 ### 3. 索引服务 (index包)
 - **IdxService**: Lucene索引服务类
@@ -105,8 +134,23 @@
   - 统一响应格式（QueryResponse）
   - 参数验证和错误处理
   - 分页支持
+- **FileUploadController**: 文件上传管理控制器 ⭐ 新增
+  - 文件上传接口（图片、视频、批量上传）
+  - 文件列表查询接口
+  - 文件下载接口
+  - 文件删除接口
+  - 用户文件统计接口
+  - 集成用户认证和权限控制
 
-### 5. 工具类 (utils包)
+### 5. 数据访问层 (repository包)
+- **UserFileRepository**: 用户文件数据访问接口 ⭐ 新增
+  - 支持按用户ID查询文件
+  - 支持按文件类型筛选
+  - 支持按文件名搜索
+  - 支持软删除查询
+  - 提供统计查询方法
+
+### 6. 工具类 (utils包)
 - **PageResponse**: 分页响应封装类
 - **QueryResponse**: 统一响应格式类
 - **JsonUtils**: JSON处理工具类
@@ -238,4 +282,4 @@
 4. **参数验证**: 完整的参数验证机制
 5. **错误处理**: 统一的异常处理
 
-该系统为前端开发提供了完整的接口支持，可以轻松实现各种检索界面和功能。 
+该系统为前端开发提供了完整的接口支持，可以轻松实现各种检索界面和功能。

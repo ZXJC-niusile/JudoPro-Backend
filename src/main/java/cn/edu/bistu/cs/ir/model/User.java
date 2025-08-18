@@ -19,9 +19,6 @@ public class User {
 
     private String password;
 
-    private String qqOpenId;
-    private String wechatOpenId;
-
     private String avatar;
 
     private boolean enabled = true;

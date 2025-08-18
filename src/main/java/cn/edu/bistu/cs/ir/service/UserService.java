@@ -33,14 +33,6 @@ public class UserService {
         return userRepository.findByEmail(email);
     }
 
-    public Optional<User> findByQqOpenId(String qqOpenId) {
-        return userRepository.findByQqOpenId(qqOpenId);
-    }
-
-    public Optional<User> findByWechatOpenId(String wechatOpenId) {
-        return userRepository.findByWechatOpenId(wechatOpenId);
-    }
-
     public PasswordEncoder getPasswordEncoder() {
         return passwordEncoder;
     }

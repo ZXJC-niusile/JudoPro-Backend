@@ -32,9 +32,6 @@ public class UserController {
         return ResponseEntity.status(401).body("邮箱或密码错误");
     }
 
-    // QQ/微信授权登录由Spring Security OAuth2自动处理
-    // 可扩展自定义回调接口
-
     @GetMapping("/me")
     public ResponseEntity<?> getCurrentUser(Authentication authentication) {
         return ResponseEntity.ok(authentication.getPrincipal());
