@@ -80,6 +80,41 @@ public class FileUploadConfig implements WebMvcConfigurer {
     public String getVideoUploadPath() {
         return getAbsoluteUploadPath() + File.separator + "videos";
     }
+
+    /**
+     * 获取标注图片上传路径
+     */
+    public String getAnnotatedImagePath() {
+        return getAbsoluteUploadPath() + File.separator + "annotated_images";
+    }
+
+    /**
+     * 获取标注视频上传路径
+     */
+    public String getAnnotatedVideoPath() {
+        return getAbsoluteUploadPath() + File.separator + "annotated_videos";
+    }
+
+    /**
+     * 获取文字描述专用目录路径
+     */
+    public String getTextDescriptionsPath() {
+        return getAbsoluteUploadPath() + File.separator + "text_descriptions";
+    }
+
+    /**
+     * 获取图片分析文字描述路径
+     */
+    public String getImageAnalysisTextPath() {
+        return getTextDescriptionsPath() + File.separator + "image_analysis";
+    }
+
+    /**
+     * 获取视频分析文字描述路径
+     */
+    public String getVideoAnalysisTextPath() {
+        return getTextDescriptionsPath() + File.separator + "video_analysis";
+    }
     
     // Getters and Setters
     public String getUploadPath() {

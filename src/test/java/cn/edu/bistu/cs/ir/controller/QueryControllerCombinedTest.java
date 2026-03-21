@@ -40,8 +40,8 @@ public class QueryControllerCombinedTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.message").value("组合条件检索成功"))
                 .andExpect(jsonPath("$.data").exists())
-                .andExpect(jsonPath("$.data.pageNo").value(1))
-                .andExpect(jsonPath("$.data.pageSize").value(10));
+                .andExpect(jsonPath("$.data.pageInfo.pageNo").value(1))
+                .andExpect(jsonPath("$.data.pageInfo.pageSize").value(10));
     }
 
     @Test
@@ -58,8 +58,8 @@ public class QueryControllerCombinedTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.message").value("组合条件检索成功"))
                 .andExpect(jsonPath("$.data").exists())
-                .andExpect(jsonPath("$.data.pageNo").value(1))
-                .andExpect(jsonPath("$.data.pageSize").value(5));
+                .andExpect(jsonPath("$.data.pageInfo.pageNo").value(1))
+                .andExpect(jsonPath("$.data.pageInfo.pageSize").value(5));
     }
 
     @Test
@@ -149,7 +149,7 @@ public class QueryControllerCombinedTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.message").value("组合条件检索成功"))
                 .andExpect(jsonPath("$.data").exists())
-                .andExpect(jsonPath("$.data.pageNo").value(2))
-                .andExpect(jsonPath("$.data.pageSize").value(5));
+                .andExpect(jsonPath("$.data.pageInfo.pageNo").value(2))
+                .andExpect(jsonPath("$.data.pageInfo.pageSize").value(5));
     }
 }

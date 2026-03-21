@@ -1,24 +1,43 @@
 package cn.edu.bistu.cs.ir.index;
 
 import cn.edu.bistu.cs.ir.config.Config;
-import cn.edu.bistu.cs.ir.model.AgeGroup;
-import cn.edu.bistu.cs.ir.model.Continent;
-import cn.edu.bistu.cs.ir.model.CountryContinentMapping;
-import cn.edu.bistu.cs.ir.model.WeightClass;
-import cn.edu.bistu.cs.ir.model.Player;
+import cn.edu.bistu.cs.ir.model.*;
 import cn.edu.bistu.cs.ir.service.SearchCriteria;
+import cn.edu.bistu.cs.ir.utils.JsonUtils;
 import cn.edu.bistu.cs.ir.utils.StringUtil;
 import cn.edu.bistu.cs.ir.utils.PageResponse;
 import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.document.*;
+import org.apache.lucene.document.DoublePoint;
+import org.apache.lucene.document.Field;
+import org.apache.lucene.document.IntPoint;
+import org.apache.lucene.document.StringField;
+import org.apache.lucene.document.TextField;
+import org.apache.lucene.index.*;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.*;
+import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.BoostQuery;
+import org.apache.lucene.search.FuzzyQuery;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.PhraseQuery;
+import org.apache.lucene.search.PrefixQuery;
+import org.apache.lucene.search.MatchAllDocsQuery;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.search.TopDocs;
+import org.apache.lucene.search.WildcardQuery;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 import org.slf4j.Logger;
@@ -27,11 +46,32 @@ import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.util.HashSet;
+import java.util.Set;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.TopDocs;
+import org.apache.lucene.search.ScoreDoc;
 import java.io.IOException;
+import java.io.StringReader;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
+import java.util.stream.Collectors;
+import java.io.FileReader;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 面向<a href="https://lucene.apache.org/">Lucene</a>
@@ -46,8 +86,10 @@ public class IdxService implements DisposableBean {
     private static final Class<? extends Analyzer> DEFAULT_ANALYZER = StandardAnalyzer.class;
 
     private IndexWriter writer;
+    private final Config config;
 
     public IdxService(@Autowired Config config) throws Exception {
+        this.config = config;
         Analyzer analyzer = DEFAULT_ANALYZER.getConstructor().newInstance();
         Directory index;
         try {
@@ -74,7 +116,7 @@ public class IdxService implements DisposableBean {
         try {
             writer.updateDocument(new Term(idFld, id), doc);
             writer.commit();
-            log.info("成功将ID为[{}]的柔道家信息加入索引", id);
+            // log.info("成功将ID为[{}]的柔道家信息加入索引", id);
             return true;
         } catch (IOException e) {
             e.printStackTrace();
@@ -178,44 +220,233 @@ public class IdxService implements DisposableBean {
      * @return 分页检索结果
      */
     public PageResult queryByAgeGroup(AgeGroup ageGroup, int pageNo, int pageSize) throws Exception {
+        log.info("🔍 开始查询年龄组别: {} ({}-{}岁)", ageGroup.name(), ageGroup.getMinAge(), ageGroup.getMaxAge());
+
         if (ageGroup == null) {
             throw new IllegalArgumentException("年龄组别不能为空");
         }
-        
+
         // 参数验证
         if (pageNo < 1) pageNo = 1;
         if (pageSize < 1) pageSize = 10;
-        
+
         // 打开准实时索引Reader
         DirectoryReader reader = DirectoryReader.open(writer);
         IndexSearcher searcher = new IndexSearcher(reader);
-        
-        // 构建年龄范围查询
-        Query query = IntPoint.newRangeQuery("AGE_NUM", ageGroup.getMinAge(), ageGroup.getMaxAge());
-        
+        log.info("📊 索引总文档数: {}", reader.numDocs());
+
+        // 先检查AGE_NUM字段是否存在
+        boolean useAgeNumField = false;
+        try {
+            Query testQuery = IntPoint.newRangeQuery("AGE_NUM", 0, 200);
+            TopDocs testResult = searcher.search(testQuery, 1);
+            useAgeNumField = true;
+            log.info("✅ AGE_NUM字段存在，将使用数字字段查询");
+        } catch (Exception e) {
+            log.warn("⚠️ AGE_NUM字段不存在或查询失败，将尝试使用AGE字段: {}", e.getMessage());
+            useAgeNumField = false;
+        }
+
+        Query query;
+        if (useAgeNumField) {
+            // 使用AGE_NUM字段查询
+            query = IntPoint.newRangeQuery("AGE_NUM", ageGroup.getMinAge(), ageGroup.getMaxAge());
+            log.info("🎯 构建查询条件: AGE_NUM between {} and {}", ageGroup.getMinAge(), ageGroup.getMaxAge());
+        } else {
+            // 使用AGE字符串字段查询，需要手动过滤
+            query = new MatchAllDocsQuery();
+            log.info("🎯 将使用AGE字符串字段查询，手动过滤年龄范围 {}-{}", ageGroup.getMinAge(), ageGroup.getMaxAge());
+        }
+
         // 先获取总记录数
-        TopDocs totalDocs = searcher.search(query, Integer.MAX_VALUE);
+        TopDocs totalDocs;
+        if (useAgeNumField) {
+            totalDocs = searcher.search(query, Integer.MAX_VALUE);
+        } else {
+            // 对于AGE字段，需要获取所有文档然后手动过滤
+            TopDocs allDocs = searcher.search(new MatchAllDocsQuery(), Integer.MAX_VALUE);
+            List<ScoreDoc> filteredDocs = new ArrayList<>();
+            for (ScoreDoc scoreDoc : allDocs.scoreDocs) {
+                Document doc = searcher.doc(scoreDoc.doc);
+                IndexableField ageField = doc.getField("AGE");
+                if (ageField != null) {
+                    try {
+                        String ageStr = ageField.stringValue();
+                        if (ageStr != null && !ageStr.isEmpty()) {
+                            int age = Integer.parseInt(ageStr.trim());
+                            if (age >= ageGroup.getMinAge() && age <= ageGroup.getMaxAge()) {
+                                filteredDocs.add(scoreDoc);
+                            }
+                        }
+                    } catch (NumberFormatException e) {
+                        // 忽略无效的年龄值
+                    }
+                }
+            }
+            // 创建新的TopDocs对象
+            totalDocs = new TopDocs(allDocs.totalHits, filteredDocs.toArray(new ScoreDoc[0]));
+        }
+
         long total = totalDocs.totalHits.value;
-        
+        log.info("📈 查询结果总记录数: {}", total);
+
+        // 如果是CADET查询且无结果，提供额外调试信息
+        if (ageGroup == AgeGroup.CADET && total == 0) {
+            log.warn("⚠️ CADET年龄组(15-17岁)无数据，开始详细调试...");
+
+            // 查询所有记录的年龄分布
+            Query allQuery = new MatchAllDocsQuery();
+            TopDocs allDocs = searcher.search(allQuery, 100);
+            log.info("🔢 总共查询到 {} 条记录用于年龄分析", allDocs.totalHits.value);
+
+            // 先检查第一个文档的所有字段，确认字段名称
+            if (allDocs.scoreDocs != null && allDocs.scoreDocs.length > 0) {
+                Document firstDoc = searcher.doc(allDocs.scoreDocs[0].doc);
+                log.info("🔍 检查文档中的所有字段:");
+                for (IndexableField field : firstDoc.getFields()) {
+                    log.info("   - 字段名: {}, 值: {}, 类型: {}",
+                        field.name(),
+                        field.stringValue(),
+                        field.getClass().getSimpleName());
+                }
+            }
+
+            // 统计年龄分布
+            Map<Integer, Integer> ageDistribution = new HashMap<>();
+            int hasAgeNumCount = 0;
+            int hasAgeCount = 0;
+            int totalAgeFields = 0;
+
+            for (ScoreDoc scoreDoc : allDocs.scoreDocs) {
+                Document doc = searcher.doc(scoreDoc.doc);
+
+                // 检查AGE_NUM字段
+                IndexableField ageNumField = doc.getField("AGE_NUM");
+                if (ageNumField != null) {
+                    hasAgeNumCount++;
+                    try {
+                        int age = ageNumField.numericValue().intValue();
+                        ageDistribution.put(age, ageDistribution.getOrDefault(age, 0) + 1);
+                    } catch (Exception e) {
+                        log.warn("⚠️ AGE_NUM字段值解析失败: {}", e.getMessage());
+                    }
+                }
+
+                // 检查AGE字段（字符串类型）
+                IndexableField ageField = doc.getField("AGE");
+                if (ageField != null) {
+                    hasAgeCount++;
+                    totalAgeFields++;
+                }
+
+                // 检查是否有任一年龄相关字段
+                if (ageNumField != null || ageField != null) {
+                    totalAgeFields++;
+                }
+            }
+
+            log.info("📊 字段统计结果:");
+            log.info("   - 包含AGE_NUM字段的文档数: {}", hasAgeNumCount);
+            log.info("   - 包含AGE字段的文档数: {}", hasAgeCount);
+            log.info("   - 包含任一年龄字段的文档数: {}", totalAgeFields);
+            log.info("   - 分析的总文档数: {}", allDocs.scoreDocs.length);
+
+            // 如果AGE_NUM字段完全不存在，尝试使用AGE字段
+            if (hasAgeNumCount == 0 && hasAgeCount > 0) {
+                log.warn("⚠️ AGE_NUM字段不存在，但AGE字段存在！尝试使用AGE字段进行年龄分析...");
+                ageDistribution.clear();
+
+                for (ScoreDoc scoreDoc : allDocs.scoreDocs) {
+                    Document doc = searcher.doc(scoreDoc.doc);
+                    IndexableField ageField = doc.getField("AGE");
+                    if (ageField != null) {
+                        String ageStr = ageField.stringValue();
+                        try {
+                            if (ageStr != null && !ageStr.isEmpty()) {
+                                int age = parseAgeFromString(ageStr);
+                                if (age > 0) {
+                                    ageDistribution.put(age, ageDistribution.getOrDefault(age, 0) + 1);
+                                }
+                            }
+                        } catch (Exception e) {
+                            log.warn("⚠️ AGE字段值解析失败: {} -> {}", ageStr, e.getMessage());
+                        }
+                    }
+                }
+                log.info("✅ 使用AGE字段解析完成，年龄分布: {}", ageDistribution);
+            }
+
+            log.info("📊 年龄分布统计: {}", ageDistribution);
+
+            // 统计各年龄组的人数
+            Map<String, Integer> groupCount = new HashMap<>();
+            for (Map.Entry<Integer, Integer> entry : ageDistribution.entrySet()) {
+                int age = entry.getKey();
+                int count = entry.getValue();
+                AgeGroup group = AgeGroup.getByAge(age);
+                if (group != null) {
+                    groupCount.put(group.name(), groupCount.getOrDefault(group.name(), 0) + count);
+                } else {
+                    groupCount.put("UNKNOWN", groupCount.getOrDefault("UNKNOWN", 0) + count);
+                }
+            }
+
+            log.info("👥 各年龄组人数统计: {}", groupCount);
+            log.info("🚨 特别检查: 15-17岁年龄段的人数 = {}",
+                ageDistribution.getOrDefault(15, 0) + ageDistribution.getOrDefault(16, 0) + ageDistribution.getOrDefault(17, 0));
+        }
+
         // 计算分页参数
         int fromIndex = (pageNo - 1) * pageSize;
         int toIndex = fromIndex + pageSize;
-        
+
         // 如果起始索引超出范围，返回空结果
         if (fromIndex >= total) {
             return new PageResult(new ArrayList<>(), total);
         }
-        
-        // 在Lucene层面进行分页查询
-        TopDocs docs = searcher.search(query, toIndex);
-        ScoreDoc[] hits = docs.scoreDocs;
-        
+
         List<Document> results = new ArrayList<>();
-        // 只取当前页的数据
-        for (int i = fromIndex; i < Math.min(hits.length, toIndex); i++) {
-            results.add(searcher.doc(hits[i].doc));
+
+        if (useAgeNumField) {
+            // 使用AGE_NUM字段的常规Lucene查询
+            TopDocs docs = searcher.search(query, toIndex);
+            ScoreDoc[] hits = docs.scoreDocs;
+
+            // 只取当前页的数据
+            for (int i = fromIndex; i < Math.min(hits.length, toIndex); i++) {
+                results.add(searcher.doc(hits[i].doc));
+            }
+        } else {
+            // 使用AGE字段的手动过滤查询
+            log.info("🔄 使用AGE字段进行分页查询，从第{}条开始，取{}条", fromIndex, pageSize);
+
+            // 重新获取所有符合条件的文档
+            TopDocs allDocs = searcher.search(new MatchAllDocsQuery(), Integer.MAX_VALUE);
+            List<ScoreDoc> filteredDocs = new ArrayList<>();
+
+            for (ScoreDoc scoreDoc : allDocs.scoreDocs) {
+                Document doc = searcher.doc(scoreDoc.doc);
+                IndexableField ageField = doc.getField("AGE");
+                if (ageField != null) {
+                    String ageStr = ageField.stringValue();
+                    int age = parseAgeFromString(ageStr);
+                    if (age >= ageGroup.getMinAge() && age <= ageGroup.getMaxAge()) {
+                        filteredDocs.add(scoreDoc);
+                    }
+                }
+            }
+
+            log.info("📊 AGE字段过滤后找到{}条匹配的文档", filteredDocs.size());
+
+            // 手动分页
+            for (int i = fromIndex; i < Math.min(filteredDocs.size(), fromIndex + pageSize); i++) {
+                results.add(searcher.doc(filteredDocs.get(i).doc));
+            }
+
+            // 更新total为实际过滤后的数量
+            total = filteredDocs.size();
         }
-        
+
         return new PageResult(results, total);
     }
 
@@ -227,24 +458,44 @@ public class IdxService implements DisposableBean {
      * @return 分页检索结果
      */
     public PageResult queryByWeightClass(WeightClass weightClass, int pageNo, int pageSize) throws Exception {
+        log.info("IdxService查询体重级别 - weightClass: {}, pageNo: {}, pageSize: {}",
+                weightClass != null ? weightClass.getCode() : "null", pageNo, pageSize);
+
         if (weightClass == null) {
             throw new IllegalArgumentException("体重级别不能为空");
         }
-        
+
         // 参数验证
         if (pageNo < 1) pageNo = 1;
         if (pageSize < 1) pageSize = 10;
-        
+
         // 打开准实时索引Reader
         DirectoryReader reader = DirectoryReader.open(writer);
         IndexSearcher searcher = new IndexSearcher(reader);
+
         
-        // 构建体重级别查询
-        Query query = new TermQuery(new Term("KG", weightClass.getCode()));
-        
+        // 构建体重级别查询 - 使用QueryParser处理TextField的StandardAnalyzer分词
+        String kgCode = weightClass.getCode();
+        log.info("构建Lucene查询 - KG: {}, 查询类型: QueryParser+StandardAnalyzer", kgCode);
+
+        // 🎯 修复：KG字段是TextField，需要使用QueryParser来处理StandardAnalyzer分词
+        log.info("=== 修复：使用QueryParser处理TextField的KG字段 ===");
+
+        // 使用QueryParser构建适合TextField的查询
+        // 🎯 关键修复：转义特殊字符，防止-被解析为否定操作符
+        QueryParser parser = new QueryParser("KG", new StandardAnalyzer());
+        String escapedKgCode = QueryParser.escape(kgCode);
+        Query query = parser.parse(escapedKgCode);
+        log.info("构建查询: 使用QueryParser在KG字段中匹配 原始:'{}' 转义后:'{}', 查询对象: {}", kgCode, escapedKgCode, query.toString());
+
+        // 先获取总记录数来验证
+        TopDocs testDocs = searcher.search(query, 1);
+        log.info("验证查询 - KG='{}' 查询结果: {}条记录", kgCode, testDocs.totalHits.value);
+
         // 先获取总记录数
-        TopDocs totalDocs = searcher.search(query, Integer.MAX_VALUE);
-        long total = totalDocs.totalHits.value;
+        TopDocs totalDocs1 = searcher.search(query, Integer.MAX_VALUE);
+        long total = totalDocs1.totalHits.value;
+        log.info("总记录数查询完成 - 找到{}条记录", total);
         
         // 计算分页参数
         int fromIndex = (pageNo - 1) * pageSize;
@@ -338,17 +589,116 @@ public class IdxService implements DisposableBean {
         if (StringUtil.isEmpty(country)) {
             throw new IllegalArgumentException("国家名称不能为空");
         }
-        
+
+        log.info("IdxService查询国家 - country: {}, pageNo: {}, pageSize: {}", country, pageNo, pageSize);
+
         // 参数验证
         if (pageNo < 1) pageNo = 1;
         if (pageSize < 1) pageSize = 10;
-        
+
         // 打开准实时索引Reader
         DirectoryReader reader = DirectoryReader.open(writer);
         IndexSearcher searcher = new IndexSearcher(reader);
-        
-        // 构建国家查询
-        Query query = new TermQuery(new Term("LOCATION", country));
+
+        // 🎯 调试：先检查索引中实际存储的数据总量和国家/地区数据
+        log.info("=== 调试：检查索引整体情况 ===");
+        Query allDocsQuery = new MatchAllDocsQuery();
+        TopDocs allDocs = searcher.search(allDocsQuery, Integer.MAX_VALUE);
+        log.info("索引中的总记录数: {}", allDocs.totalHits.value);
+
+        // 🎯 新增：检查workspace中的JSON文件数量（包括子目录）
+        try {
+            Path crawlerPath = Paths.get(config.getCrawler());
+            if (Files.exists(crawlerPath) && Files.isDirectory(crawlerPath)) {
+                // 检查根目录的JSON文件
+                long rootJsonCount = Files.list(crawlerPath)
+                    .filter(path -> path.toString().endsWith(".json"))
+                    .count();
+
+                // 递归检查所有子目录的JSON文件
+                long totalJsonCount = Files.walk(crawlerPath)
+                    .filter(path -> Files.isRegularFile(path))
+                    .filter(path -> path.toString().endsWith(".json"))
+                    .count();
+
+                log.info("=== 调试：检查workspace中的JSON文件 ===");
+                log.info("Workspace目录: {}", config.getCrawler());
+                log.info("根目录JSON文件数: {}", rootJsonCount);
+                log.info("包括子目录的JSON文件总数: {}", totalJsonCount);
+
+                // 如果JSON文件数量远大于索引记录数，说明索引没有包含所有数据
+                if (totalJsonCount > allDocs.totalHits.value + 1000) { // 加1000的容错
+                    log.warn("⚠️ 发现数据不一致！JSON文件有{}个，但索引只有{}条记录", totalJsonCount, allDocs.totalHits.value);
+                    log.warn("建议：可能需要从workspace重建索引以包含所有数据");
+                } else if (totalJsonCount == 0) {
+                    log.warn("⚠️ 警告：workspace目��中没有JSON文件，索引可能过时");
+                } else {
+                    log.info("✅ JSON文件数量({})与索引记录数({})基本匹配", totalJsonCount, allDocs.totalHits.value);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("无法检查workspace中的JSON文件数量: {}", e.getMessage());
+        }
+
+        // 检查前100条记录中的LOCATION字段数据
+        log.info("=== 调试：检查索引中的LOCATION字段数据 ===");
+        TopDocs sampleDocs = searcher.search(allDocsQuery, 100);
+        Set<String> uniqueLocations = new HashSet<>();
+        int locationFieldCount = 0;
+
+        for (ScoreDoc scoreDoc : sampleDocs.scoreDocs) {
+            Document doc = searcher.doc(scoreDoc.doc);
+            String[] locations = doc.getValues("LOCATION");
+            if (locations.length > 0) {
+                locationFieldCount++;
+                for (String location : locations) {
+                    if (!location.isEmpty()) {
+                        uniqueLocations.add(location);
+                    }
+                }
+            }
+
+            // 同时记录其他字段的信息来验证数据完整性
+            String id = doc.get("ID");
+            String name = doc.get("NAME");
+            // 显示前10条记录的详细信息
+            if (uniqueLocations.size() <= 5 && scoreDoc.doc < 5) { // 只在国家很少时显示详细信息
+                // 检查所有可能的字段名
+                String location = doc.get("LOCATION");
+                String country1 = doc.get("COUNTRY");
+                String countryField = doc.get("COUNTRY_FIELD");
+                log.info("详细记录{} - ID: {}, 姓名: {}, LOCATION字段: '{}', COUNTRY字段: '{}'",
+                    scoreDoc.doc, id, name, location, country1);
+
+                // 显示文档的所有字段名
+                List<IndexableField> fields = doc.getFields();
+                Set<String> fieldNames = new HashSet<>();
+                for (IndexableField field : fields) {
+                    fieldNames.add(field.name());
+                }
+                log.info("  所有字段名: {}", fieldNames);
+            }
+        }
+
+        log.info("前{}条记录中有LOCATION字段的记录数: {}", sampleDocs.scoreDocs.length, locationFieldCount);
+        log.info("索引中找到的LOCATION数据样本（共{}种）: {}", uniqueLocations.size(), uniqueLocations);
+
+        // 🎯 修复：使用QueryParser处理TextField的LOCATION字段
+        log.info("=== 修复：使用QueryParser处理TextField的LOCATION字段 ===");
+        QueryParser parser = new QueryParser("LOCATION", new StandardAnalyzer());
+        String escapedCountry = QueryParser.escape(country);
+        Query query = parser.parse(escapedCountry);
+        log.info("构建查询: 使用QueryParser在LOCATION字段中匹配 原始:'{}' 转义后:'{}', 查询对象: {}", country, escapedCountry, query.toString());
+
+        // 如果QueryParser精确匹配没找到，尝试模糊匹配
+        TopDocs testDocs = searcher.search(query, 1);
+        if (testDocs.totalHits.value == 0) {
+            log.warn("QueryParser��确匹配没找到结果，尝试模糊匹配");
+            // 对于模糊匹配，也使用适合TextField的方式
+            WildcardQuery wildcardQuery = new WildcardQuery(new Term("LOCATION", "*" + country + "*"));
+            query = wildcardQuery;
+            log.info("切换到模糊匹配查询 - 查询对象: {}", query.toString());
+        }
         
         // 先获取总记录数
         TopDocs totalDocs = searcher.search(query, Integer.MAX_VALUE);
@@ -454,7 +804,7 @@ public class IdxService implements DisposableBean {
         
         // 体重级别查询
         if (criteria.hasWeightClass()) {
-            Query weightQuery = new TermQuery(new Term("KG", criteria.getWeightClass().getCode()));
+            Query weightQuery = new WildcardQuery(new Term("KG", "*" + criteria.getWeightClass().getCode() + "*"));
             booleanQueryBuilder.add(weightQuery, BooleanClause.Occur.MUST);
         }
         
@@ -471,25 +821,25 @@ public class IdxService implements DisposableBean {
             
             // 根据体重范围匹配对应的体重级别
             if (minWeight <= 60 && maxWeight >= 60) {
-                weightRangeQueryBuilder.add(new TermQuery(new Term("KG", "-60")), BooleanClause.Occur.SHOULD);
+                weightRangeQueryBuilder.add(new WildcardQuery(new Term("KG", "*-60*")), BooleanClause.Occur.SHOULD);
             }
             if (minWeight <= 66 && maxWeight >= 66) {
-                weightRangeQueryBuilder.add(new TermQuery(new Term("KG", "-66")), BooleanClause.Occur.SHOULD);
+                weightRangeQueryBuilder.add(new WildcardQuery(new Term("KG", "*-66*")), BooleanClause.Occur.SHOULD);
             }
             if (minWeight <= 73 && maxWeight >= 73) {
-                weightRangeQueryBuilder.add(new TermQuery(new Term("KG", "-73")), BooleanClause.Occur.SHOULD);
+                weightRangeQueryBuilder.add(new WildcardQuery(new Term("KG", "*-73*")), BooleanClause.Occur.SHOULD);
             }
             if (minWeight <= 81 && maxWeight >= 81) {
-                weightRangeQueryBuilder.add(new TermQuery(new Term("KG", "-81")), BooleanClause.Occur.SHOULD);
+                weightRangeQueryBuilder.add(new WildcardQuery(new Term("KG", "*-81*")), BooleanClause.Occur.SHOULD);
             }
             if (minWeight <= 90 && maxWeight >= 90) {
-                weightRangeQueryBuilder.add(new TermQuery(new Term("KG", "-90")), BooleanClause.Occur.SHOULD);
+                weightRangeQueryBuilder.add(new WildcardQuery(new Term("KG", "*-90*")), BooleanClause.Occur.SHOULD);
             }
             if (minWeight <= 100 && maxWeight >= 100) {
-                weightRangeQueryBuilder.add(new TermQuery(new Term("KG", "-100")), BooleanClause.Occur.SHOULD);
+                weightRangeQueryBuilder.add(new WildcardQuery(new Term("KG", "*-100*")), BooleanClause.Occur.SHOULD);
             }
             if (maxWeight >= 100) {
-                weightRangeQueryBuilder.add(new TermQuery(new Term("KG", "+100")), BooleanClause.Occur.SHOULD);
+                weightRangeQueryBuilder.add(new WildcardQuery(new Term("KG", "*+100*")), BooleanClause.Occur.SHOULD);
             }
             
             BooleanQuery weightRangeQuery = weightRangeQueryBuilder.build();
@@ -528,6 +878,7 @@ public class IdxService implements DisposableBean {
         int toIndex = fromIndex + pageSize;
         
         // 如果起始索引超出范围，返回空结果
+
         if (fromIndex >= total) {
             return new PageResult(new ArrayList<>(), total);
         }
@@ -554,68 +905,108 @@ public class IdxService implements DisposableBean {
      * @return 分页结果
      */
     public PageResponse<Player> fuzzySearch(String fuzzyKeyword, Double similarity, int page, int size) {
+        log.info("🎯 IdxService模糊搜索开始 - 关键词: '{}', 相似度阈值: {}, 页码: {}, 页大小: {}", fuzzyKeyword, similarity, page, size);
+
+        // 参数验证和日志记录
+        if (fuzzyKeyword == null || fuzzyKeyword.trim().isEmpty()) {
+            log.warn("⚠️ 模糊搜索关键词为空，返回空结果");
+            return PageResponse.of(new ArrayList<>(), page, size, 0);
+        }
+
+        if (page < 1) {
+            log.warn("⚠️ 页码参数异常: {}，调整为1", page);
+            page = 1;
+        }
+
+        if (size < 1) {
+            log.warn("⚠️ 页大小参数异常: {}，调整为10", size);
+            size = 10;
+        }
+
         try {
             IndexReader reader = DirectoryReader.open(writer);
             IndexSearcher searcher = new IndexSearcher(reader);
-            
+
+            log.info("📚 索引读取器打开成功，索引文档总数: {}", reader.numDocs());
+
             // 构建模糊查询
             BooleanQuery.Builder queryBuilder = new BooleanQuery.Builder();
-            
+            String searchTerm = fuzzyKeyword.toLowerCase().trim();
+
+            log.info("🔍 构建多策略模糊查询 - 搜索词: '{}'", searchTerm);
+
             // 1. 模糊查询 (FuzzyQuery) - 支持拼写错误和相似词
-            FuzzyQuery nameFuzzyQuery = new FuzzyQuery(new Term("name", fuzzyKeyword.toLowerCase()), 2);
-            FuzzyQuery countryFuzzyQuery = new FuzzyQuery(new Term("country", fuzzyKeyword.toLowerCase()), 2);
-            
-            // 2. 通配符查询 (WildcardQuery) - 支持*和?通配符
-            WildcardQuery nameWildcardQuery = new WildcardQuery(new Term("name", "*" + fuzzyKeyword.toLowerCase() + "*"));
-            WildcardQuery countryWildcardQuery = new WildcardQuery(new Term("country", "*" + fuzzyKeyword.toLowerCase() + "*"));
-            
-            // 3. 前缀查询 (PrefixQuery) - 支持前缀匹配
-            PrefixQuery namePrefixQuery = new PrefixQuery(new Term("name", fuzzyKeyword.toLowerCase()));
-            PrefixQuery countryPrefixQuery = new PrefixQuery(new Term("country", fuzzyKeyword.toLowerCase()));
-            
-            // 组合查询
+            FuzzyQuery nameFuzzyQuery = new FuzzyQuery(new Term("NAME", searchTerm), 2);
+            FuzzyQuery locationFuzzyQuery = new FuzzyQuery(new Term("LOCATION", searchTerm), 2);
             queryBuilder.add(nameFuzzyQuery, BooleanClause.Occur.SHOULD);
-            queryBuilder.add(countryFuzzyQuery, BooleanClause.Occur.SHOULD);
+            queryBuilder.add(locationFuzzyQuery, BooleanClause.Occur.SHOULD);
+            log.info("✅ FuzzyQuery构建完成 - NAME: '{}', LOCATION: '{}'", searchTerm, searchTerm);
+
+            // 2. 通配符查询 (WildcardQuery) - 支持*和?通配符
+            WildcardQuery nameWildcardQuery = new WildcardQuery(new Term("NAME", "*" + searchTerm + "*"));
+            WildcardQuery locationWildcardQuery = new WildcardQuery(new Term("LOCATION", "*" + searchTerm + "*"));
             queryBuilder.add(nameWildcardQuery, BooleanClause.Occur.SHOULD);
-            queryBuilder.add(countryWildcardQuery, BooleanClause.Occur.SHOULD);
+            queryBuilder.add(locationWildcardQuery, BooleanClause.Occur.SHOULD);
+            log.info("✅ WildcardQuery构建完成 - NAME: '*{}*', LOCATION: '*{}*'", searchTerm, searchTerm);
+
+            // 3. 前缀查询 (PrefixQuery) - 支持前缀匹配
+            PrefixQuery namePrefixQuery = new PrefixQuery(new Term("NAME", searchTerm));
+            PrefixQuery locationPrefixQuery = new PrefixQuery(new Term("LOCATION", searchTerm));
             queryBuilder.add(namePrefixQuery, BooleanClause.Occur.SHOULD);
-            queryBuilder.add(countryPrefixQuery, BooleanClause.Occur.SHOULD);
-            
+            queryBuilder.add(locationPrefixQuery, BooleanClause.Occur.SHOULD);
+            log.info("✅ PrefixQuery构建完成 - NAME: '{}', LOCATION: '{}'", searchTerm, searchTerm);
+
             // 4. 如果提供了相似度阈值，调整查询权重
             if (similarity != null && similarity > 0.0) {
-                // 使用相似度作为权重调整因子
                 float boost = similarity.floatValue();
                 BoostQuery boostedNameQuery = new BoostQuery(nameFuzzyQuery, boost);
-                BoostQuery boostedCountryQuery = new BoostQuery(countryFuzzyQuery, boost);
-                
+                BoostQuery boostedLocationQuery = new BoostQuery(locationFuzzyQuery, boost);
                 queryBuilder.add(boostedNameQuery, BooleanClause.Occur.SHOULD);
-                queryBuilder.add(boostedCountryQuery, BooleanClause.Occur.SHOULD);
+                queryBuilder.add(boostedLocationQuery, BooleanClause.Occur.SHOULD);
+                log.info("🔥 相似度权重应用 - 权重值: {}", boost);
             }
-            
+
             BooleanQuery query = queryBuilder.build();
-            
+            log.info("🎯 最终查询语句: {}", query.toString());
+
+            // 🔧 修复分页逻辑 - 计算正确的起始位置和总数
+            int start = (page - 1) * size;  // 修复：第1页从0开始
+            int totalHitsToRetrieve = start + size;  // 修复：获取足够的结果用于分页
+
+            log.info("📄 分页计算 - 起始位置: {}, 需要获取结果数: {}", start, totalHitsToRetrieve);
+
             // 执行搜索
-            TopDocs topDocs = searcher.search(query, page * size);
-            
-            // 分页处理
-            int start = page * size;
-            int end = Math.min(start + size, topDocs.scoreDocs.length);
-            
+            TopDocs topDocs = searcher.search(query, totalHitsToRetrieve);
+            log.info("🎉 搜索完成 - 总命中数: {}, 实际获取文档数: {}", topDocs.totalHits.value, topDocs.scoreDocs.length);
+
+            // 分页处理 - 从起始位置开始提取数据
+            int actualStart = Math.max(0, start);
+            int actualEnd = Math.min(actualStart + size, topDocs.scoreDocs.length);
+
+            log.info("✂️ 结果切片 - 实际起始: {}, 实际结束: {}", actualStart, actualEnd);
+
             List<Player> players = new ArrayList<>();
-            for (int i = start; i < end; i++) {
+            for (int i = actualStart; i < actualEnd; i++) {
                 ScoreDoc scoreDoc = topDocs.scoreDocs[i];
                 Document doc = searcher.doc(scoreDoc.doc);
                 Player player = documentToPlayer(doc);
-                players.add(player);
+
+                if (player != null) {
+                    players.add(player);
+                    log.debug("👤 成功解析运动员数据 - ID: {}, 姓名: {}", player.getId(), player.getName());
+                } else {
+                    log.warn("⚠️ 文档转换为Player对象失败，文档ID: {}", scoreDoc.doc);
+                }
             }
-            
+
             reader.close();
-            
+
+            log.info("🏆 模糊搜索成功完成 - 返回{}条记录，总匹配数: {}", players.size(), topDocs.totalHits.value);
             return PageResponse.of(players, page, size, topDocs.totalHits.value);
-            
+
         } catch (Exception e) {
-            log.error("模糊匹配检索失败", e);
-            throw new RuntimeException("模糊匹配检索失败: " + e.getMessage());
+            log.error("💥 模糊搜索执行失败 - 关键词: '{}', 错误: {}", fuzzyKeyword, e.getMessage(), e);
+            throw new RuntimeException("模糊搜索执行失败: " + e.getMessage(), e);
         }
     }
     
@@ -639,12 +1030,12 @@ public class IdxService implements DisposableBean {
                 BooleanQuery.Builder keywordQueryBuilder = new BooleanQuery.Builder();
                 
                 // 精确匹配
-                TermQuery nameQuery = new TermQuery(new Term("name", criteria.getKeyword().toLowerCase()));
-                TermQuery countryQuery = new TermQuery(new Term("country", criteria.getKeyword().toLowerCase()));
-                
+                TermQuery nameQuery = new TermQuery(new Term("NAME", criteria.getKeyword().toLowerCase()));
+                TermQuery countryQuery = new TermQuery(new Term("LOCATION", criteria.getKeyword().toLowerCase()));
+
                 // 短语查询 - 提高精确度
                 PhraseQuery namePhraseQuery = new PhraseQuery.Builder()
-                    .add(new Term("name", criteria.getKeyword().toLowerCase()))
+                    .add(new Term("NAME", criteria.getKeyword().toLowerCase()))
                     .build();
                 
                 keywordQueryBuilder.add(nameQuery, BooleanClause.Occur.SHOULD);
@@ -659,24 +1050,24 @@ public class IdxService implements DisposableBean {
                 BooleanQuery.Builder fuzzyQueryBuilder = new BooleanQuery.Builder();
                 
                 // 模糊查询
-                FuzzyQuery nameFuzzyQuery = new FuzzyQuery(new Term("name", criteria.getFuzzyKeyword().toLowerCase()), 2);
-                FuzzyQuery countryFuzzyQuery = new FuzzyQuery(new Term("country", criteria.getFuzzyKeyword().toLowerCase()), 2);
+                FuzzyQuery nameFuzzyQuery = new FuzzyQuery(new Term("NAME", criteria.getFuzzyKeyword().toLowerCase()), 2);
+                FuzzyQuery locationFuzzyQuery = new FuzzyQuery(new Term("LOCATION", criteria.getFuzzyKeyword().toLowerCase()), 2);
                 
                 // 通配符查询
-                WildcardQuery nameWildcardQuery = new WildcardQuery(new Term("name", "*" + criteria.getFuzzyKeyword().toLowerCase() + "*"));
-                WildcardQuery countryWildcardQuery = new WildcardQuery(new Term("country", "*" + criteria.getFuzzyKeyword().toLowerCase() + "*"));
+                WildcardQuery nameWildcardQuery = new WildcardQuery(new Term("NAME", "*" + criteria.getFuzzyKeyword().toLowerCase() + "*"));
+                WildcardQuery locationWildcardQuery = new WildcardQuery(new Term("LOCATION", "*" + criteria.getFuzzyKeyword().toLowerCase() + "*"));
                 
                 fuzzyQueryBuilder.add(nameFuzzyQuery, BooleanClause.Occur.SHOULD);
-                fuzzyQueryBuilder.add(countryFuzzyQuery, BooleanClause.Occur.SHOULD);
+                fuzzyQueryBuilder.add(locationFuzzyQuery, BooleanClause.Occur.SHOULD);
                 fuzzyQueryBuilder.add(nameWildcardQuery, BooleanClause.Occur.SHOULD);
-                fuzzyQueryBuilder.add(countryWildcardQuery, BooleanClause.Occur.SHOULD);
+                fuzzyQueryBuilder.add(locationWildcardQuery, BooleanClause.Occur.SHOULD);
                 
                 mainQueryBuilder.add(fuzzyQueryBuilder.build(), BooleanClause.Occur.MUST);
             }
             
             // 3. 年龄组别检索
             if (criteria.hasAgeGroup()) {
-                TermQuery ageGroupQuery = new TermQuery(new Term("ageGroup", criteria.getAgeGroup().name()));
+                TermQuery ageGroupQuery = new TermQuery(new Term("AGE", criteria.getAgeGroup().name()));
                 mainQueryBuilder.add(ageGroupQuery, BooleanClause.Occur.MUST);
             }
             
@@ -695,7 +1086,7 @@ public class IdxService implements DisposableBean {
             
             // 5. 体重级别检索
             if (criteria.hasWeightClass()) {
-                TermQuery weightClassQuery = new TermQuery(new Term("weightClass", criteria.getWeightClass().name()));
+                Query weightClassQuery = new WildcardQuery(new Term("KG", "*" + criteria.getWeightClass().getCode() + "*"));
                 mainQueryBuilder.add(weightClassQuery, BooleanClause.Occur.MUST);
             }
             
@@ -717,13 +1108,13 @@ public class IdxService implements DisposableBean {
                 BooleanQuery.Builder continentQueryBuilder = new BooleanQuery.Builder();
                 
                 // 精确匹配大洲
-                TermQuery continentQuery = new TermQuery(new Term("continent", criteria.getContinent().name()));
+                TermQuery continentQuery = new TermQuery(new Term("CONTINENT", criteria.getContinent().name()));
                 continentQueryBuilder.add(continentQuery, BooleanClause.Occur.SHOULD);
-                
+
                 // 获取该大洲的所有国家（包括others）
                 List<String> allCountries = CountryContinentMapping.getCountriesByContinentWithOthers(criteria.getContinent());
                 for (String country : allCountries) {
-                    TermQuery countryQuery = new TermQuery(new Term("country", country));
+                    TermQuery countryQuery = new TermQuery(new Term("LOCATION", country));
                     continentQueryBuilder.add(countryQuery, BooleanClause.Occur.SHOULD);
                 }
                 
@@ -732,7 +1123,7 @@ public class IdxService implements DisposableBean {
             
             // 8. 国家检索
             if (criteria.hasCountry()) {
-                TermQuery countryQuery = new TermQuery(new Term("country", criteria.getCountry()));
+                TermQuery countryQuery = new TermQuery(new Term("LOCATION", criteria.getCountry()));
                 mainQueryBuilder.add(countryQuery, BooleanClause.Occur.MUST);
             }
             
@@ -779,8 +1170,8 @@ public class IdxService implements DisposableBean {
             BooleanQuery.Builder queryBuilder = new BooleanQuery.Builder();
             
             // 1. 精确匹配 (高权重)
-            TermQuery exactNameQuery = new TermQuery(new Term("name", keyword.toLowerCase()));
-            TermQuery exactCountryQuery = new TermQuery(new Term("country", keyword.toLowerCase()));
+            TermQuery exactNameQuery = new TermQuery(new Term("NAME", keyword.toLowerCase()));
+            TermQuery exactCountryQuery = new TermQuery(new Term("LOCATION", keyword.toLowerCase()));
             
             BoostQuery boostedExactNameQuery = new BoostQuery(exactNameQuery, 3.0f);
             BoostQuery boostedExactCountryQuery = new BoostQuery(exactCountryQuery, 2.0f);
@@ -790,15 +1181,15 @@ public class IdxService implements DisposableBean {
             
             // 2. 短语匹配 (中权重)
             PhraseQuery namePhraseQuery = new PhraseQuery.Builder()
-                .add(new Term("name", keyword.toLowerCase()))
+                .add(new Term("NAME", keyword.toLowerCase()))
                 .build();
             
             BoostQuery boostedPhraseQuery = new BoostQuery(namePhraseQuery, 2.5f);
             queryBuilder.add(boostedPhraseQuery, BooleanClause.Occur.SHOULD);
             
             // 3. 前缀匹配 (中权重)
-            PrefixQuery namePrefixQuery = new PrefixQuery(new Term("name", keyword.toLowerCase()));
-            PrefixQuery countryPrefixQuery = new PrefixQuery(new Term("country", keyword.toLowerCase()));
+            PrefixQuery namePrefixQuery = new PrefixQuery(new Term("NAME", keyword.toLowerCase()));
+            PrefixQuery countryPrefixQuery = new PrefixQuery(new Term("LOCATION", keyword.toLowerCase()));
             
             BoostQuery boostedNamePrefixQuery = new BoostQuery(namePrefixQuery, 2.0f);
             BoostQuery boostedCountryPrefixQuery = new BoostQuery(countryPrefixQuery, 1.5f);
@@ -807,21 +1198,21 @@ public class IdxService implements DisposableBean {
             queryBuilder.add(boostedCountryPrefixQuery, BooleanClause.Occur.SHOULD);
             
             // 4. 模糊匹配 (低权重)
-            FuzzyQuery nameFuzzyQuery = new FuzzyQuery(new Term("name", keyword.toLowerCase()), 2);
-            FuzzyQuery countryFuzzyQuery = new FuzzyQuery(new Term("country", keyword.toLowerCase()), 2);
-            
+            FuzzyQuery nameFuzzyQuery = new FuzzyQuery(new Term("NAME", keyword.toLowerCase()), 2);
+            FuzzyQuery locationFuzzyQuery = new FuzzyQuery(new Term("LOCATION", keyword.toLowerCase()), 2);
+
             BoostQuery boostedNameFuzzyQuery = new BoostQuery(nameFuzzyQuery, 1.0f);
-            BoostQuery boostedCountryFuzzyQuery = new BoostQuery(countryFuzzyQuery, 0.8f);
-            
+            BoostQuery boostedLocationFuzzyQuery = new BoostQuery(locationFuzzyQuery, 0.8f);
+
             queryBuilder.add(boostedNameFuzzyQuery, BooleanClause.Occur.SHOULD);
-            queryBuilder.add(boostedCountryFuzzyQuery, BooleanClause.Occur.SHOULD);
+            queryBuilder.add(boostedLocationFuzzyQuery, BooleanClause.Occur.SHOULD);
             
             // 5. 通配符匹配 (最低权重)
-            WildcardQuery nameWildcardQuery = new WildcardQuery(new Term("name", "*" + keyword.toLowerCase() + "*"));
-            WildcardQuery countryWildcardQuery = new WildcardQuery(new Term("country", "*" + keyword.toLowerCase() + "*"));
+            WildcardQuery nameWildcardQuery = new WildcardQuery(new Term("NAME", "*" + keyword.toLowerCase() + "*"));
+            WildcardQuery locationWildcardQuery = new WildcardQuery(new Term("LOCATION", "*" + keyword.toLowerCase() + "*"));
             
             BoostQuery boostedNameWildcardQuery = new BoostQuery(nameWildcardQuery, 0.5f);
-            BoostQuery boostedCountryWildcardQuery = new BoostQuery(countryWildcardQuery, 0.3f);
+            BoostQuery boostedCountryWildcardQuery = new BoostQuery(locationWildcardQuery, 0.3f);
             
             queryBuilder.add(boostedNameWildcardQuery, BooleanClause.Occur.SHOULD);
             queryBuilder.add(boostedCountryWildcardQuery, BooleanClause.Occur.SHOULD);
@@ -859,13 +1250,224 @@ public class IdxService implements DisposableBean {
      * @return Player对象
      */
     private Player documentToPlayer(Document doc) {
+        log.debug("🔍 开始转换Document到Player对象 - 文档ID: {}", doc.get("ID"));
+
         Player player = new Player();
         player.setId(doc.get("ID"));
         player.setName(doc.get("NAME"));
-        player.setLocation(doc.get("COUNTRY"));
-        player.setAge(doc.get("AGE"));
-        player.setKg(doc.get("WEIGHT"));
+
+        // 🔧 修复：使用正确的字段名并添加详细日志
+        String location = doc.get("LOCATION");
+        String age = doc.get("AGE");
+        String kg = doc.get("KG");
+        String image = doc.get("IMAGE");
+        String locationIcon = doc.get("LOCATION_ICON");
+
+        player.setLocation(location);
+        player.setAge(age);
+        player.setKg(kg);
+        player.setImage(image);
+        player.setLocationIcon(locationIcon);
+
+        log.debug("📋 字段提取结果 - ID: {}, NAME: {}, LOCATION: {}, AGE: {}, KG: {}, IMAGE存在: {}, LOCATION_ICON存在: {}",
+                 doc.get("ID"), doc.get("NAME"), location, age, kg, image != null, locationIcon != null);
+
+        // 🔧 新增：处理PHOTOS字段
+        String photosJson = doc.get("PHOTOS");
+        if (photosJson != null && !photosJson.trim().isEmpty() && !photosJson.equals("[]")) {
+            try {
+                PhotoEntity photoEntity = JsonUtils.fromJson(photosJson, PhotoEntity.class);
+                player.setPhotoEntity(photoEntity);
+                log.debug("📸 成功解析PHOTOS字段 - ID: {}", doc.get("ID"));
+            } catch (Exception e) {
+                log.warn("⚠️ 解析PHOTOS字段失败 - ID: {}, 错误: {}", doc.get("ID"), e.getMessage());
+                player.setPhotoEntity(null);
+            }
+        } else {
+            log.debug("📷 PHOTOS字段为空或未设置 - ID: {}", doc.get("ID"));
+            player.setPhotoEntity(null);
+        }
+
+        log.debug("✅ Document转换完成 - Player对象: {}", player);
         return player;
+    }
+
+    /**
+     * 🎯 新增：从workspace重建索引以包含所有数据
+     * @return 重建的记录数
+     */
+    public int rebuildIndexFromWorkspace() {
+        if (writer == null) {
+            log.error("IndexWriter未初始化，无法重建索引");
+            return -1;
+        }
+
+        log.info("=== 开始从workspace重建索引 ===");
+        Path crawlerPath = Paths.get(config.getCrawler());
+
+        if (!Files.exists(crawlerPath) || !Files.isDirectory(crawlerPath)) {
+            log.error("Workspace目录不存在或不是目录: {}", config.getCrawler());
+            return -1;
+        }
+
+        try {
+            // 先清空现有索引
+            log.info("清空现有索引...");
+            writer.deleteAll();
+            writer.commit();
+            log.info("索引已清空");
+
+            ObjectMapper objectMapper = new ObjectMapper();
+            AtomicInteger processedCount = new AtomicInteger(0);
+            AtomicInteger errorCount = new AtomicInteger(0);
+
+            // 遍历所有JSON文件并重建索引
+            try (Stream<Path> jsonFiles = Files.walk(crawlerPath)
+                .filter(path -> Files.isRegularFile(path))
+                .filter(path -> path.toString().endsWith(".json"))) {
+
+                long totalFiles = jsonFiles.count();
+                log.info("找到{}个JSON文件，开始重建索引...", totalFiles);
+
+                // 重新打开流来处理文件
+                try (Stream<Path> jsonFiles2 = Files.walk(crawlerPath)
+                    .filter(path -> Files.isRegularFile(path))
+                    .filter(path -> path.toString().endsWith(".json"))) {
+
+                    jsonFiles2.forEach(jsonPath -> {
+                        try {
+                            // 读取JSON文件
+                            JsonNode jsonNode = objectMapper.readTree(jsonPath.toFile());
+
+                            // 🎯 修复：正确提取嵌套JSON结构中的字段
+                            String id = "unknown", name = "未知", age = "未知", image = "未提供", location = "未知", locationIcon = "未提供", kg = "未知";
+
+                            // 尝试从BLOG_INFO节点提取数据
+                            if (jsonNode.has("BLOG_INFO")) {
+                                JsonNode blogInfo = jsonNode.get("BLOG_INFO");
+                                id = blogInfo.has("id") ? blogInfo.get("id").asText() : "unknown";
+                                name = blogInfo.has("name") ? blogInfo.get("name").asText() : "未知";
+                                age = blogInfo.has("age") ? blogInfo.get("age").asText() : "未知";
+                                image = blogInfo.has("image") ? blogInfo.get("image").asText() : "未提供";
+                                location = blogInfo.has("location") ? blogInfo.get("location").asText() : "未知";
+                                locationIcon = blogInfo.has("locationIcon") ? blogInfo.get("locationIcon").asText() : "未提供";
+                                kg = blogInfo.has("kg") ? blogInfo.get("kg").asText() : "未知";
+
+                                log.debug("提取数据成功 - ID: {}, 姓名: {}, 国家: {}", id, name, location);
+                            } else {
+                                // 兼容性：尝试从顶级字段提取（用于可能的其他格式JSON文件）
+                                id = jsonNode.has("id") ? jsonNode.get("id").asText() : "unknown";
+                                name = jsonNode.has("name") ? jsonNode.get("name").asText() : "未知";
+                                age = jsonNode.has("age") ? jsonNode.get("age").asText() : "未知";
+                                image = jsonNode.has("image") ? jsonNode.get("image").asText() : "未提供";
+                                location = jsonNode.has("location") ? jsonNode.get("location").asText() : "未知";
+                                locationIcon = jsonNode.has("locationIcon") ? jsonNode.get("locationIcon").asText() : "未提供";
+                                kg = jsonNode.has("kg") ? jsonNode.get("kg").asText() : "未知";
+
+                                log.warn("JSON文件没有BLOG_INFO节点，使用顶级字段 - ID: {}", id);
+                            }
+
+                            // 创建Lucene文档
+                            Document doc = new Document();
+                            doc.add(new StringField("ID", id, Field.Store.YES));
+                            doc.add(new TextField("NAME", name, Field.Store.YES));
+                            doc.add(new TextField("AGE", age, Field.Store.YES));
+                            doc.add(new TextField("IMAGE", image, Field.Store.YES));
+                            doc.add(new TextField("LOCATION", location, Field.Store.YES));
+                            doc.add(new TextField("LOCATION_ICON", locationIcon, Field.Store.YES));
+                            doc.add(new TextField("KG", kg, Field.Store.YES));
+
+                            // 添加到索引
+                            writer.updateDocument(new Term("ID", id), doc);
+
+                            processedCount.incrementAndGet();
+
+                            // 每1000条记录提交一次，并记录统计信息
+                            if (processedCount.get() % 1000 == 0) {
+                                writer.commit();
+                                log.info("已处理{}条记录...", processedCount.get());
+                            }
+
+                            // 每处理100条记录，抽样统计一次国家分布
+                            if (processedCount.get() % 100 == 0) {
+                                log.info("抽样 - 当前记录: ID={}, 姓名={}, 国家={}", id, name, location);
+                            }
+
+                        } catch (Exception e) {
+                            log.error("处理JSON文件失败: {}, 错误: {}", jsonPath, e.getMessage());
+                            errorCount.incrementAndGet();
+                        }
+                    });
+                }
+            }
+
+            // 最终提交
+            writer.commit();
+            log.info("=== 索引重建完成 ===");
+            log.info("总共处理: {} 条记录", processedCount.get());
+            log.info("处理失败: {} 条记录", errorCount.get());
+            log.info("成功重建: {} 条记录", processedCount.get() - errorCount.get());
+
+            return processedCount.get() - errorCount.get();
+
+        } catch (Exception e) {
+            log.error("重建索引过程中发生错误: {}", e.getMessage(), e);
+            try {
+                writer.rollback();
+            } catch (IOException ioException) {
+                log.error("回滚索引失败: {}", ioException.getMessage());
+            }
+            return -1;
+        }
+    }
+
+    /**
+     * 从字符串中解析年龄
+     * 支持格式: "Age: 20 years", "20", "Age: 18 years", "未获取到年龄"
+     * @param ageStr 包含年龄信息的字符串
+     * @return 解析出的年龄，如果解析失败返回 -1
+     */
+    private int parseAgeFromString(String ageStr) {
+        if (ageStr == null || ageStr.trim().isEmpty()) {
+            return -1;
+        }
+
+        ageStr = ageStr.trim();
+
+        // 检查是否是"未获取到年龄"等无效信息
+        if (ageStr.contains("未获取") || ageStr.contains("N/A") || ageStr.contains("unknown")) {
+            return -1;
+        }
+
+        // 尝试直接解析纯数字
+        try {
+            return Integer.parseInt(ageStr);
+        } catch (NumberFormatException e) {
+            // 如果不是纯数字，继续下面的逻辑
+        }
+
+        // 使用正则表达式提取数字
+        Pattern pattern = Pattern.compile("(\\d{1,3})");
+        Matcher matcher = pattern.matcher(ageStr);
+
+        if (matcher.find()) {
+            try {
+                int age = Integer.parseInt(matcher.group(1));
+                // 年龄合理性检查 (1-120岁)
+                if (age >= 1 && age <= 120) {
+                    return age;
+                } else {
+                    log.debug("年龄值超出合理范围: {}", age);
+                    return -1;
+                }
+            } catch (NumberFormatException e) {
+                log.warn("解析年龄数字失败: {}", matcher.group(1));
+                return -1;
+            }
+        }
+
+        log.debug("无法从字符串中解析年龄: {}", ageStr);
+        return -1;
     }
 
     @Override

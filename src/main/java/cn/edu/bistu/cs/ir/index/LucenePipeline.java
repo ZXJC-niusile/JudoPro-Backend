@@ -5,6 +5,12 @@ import cn.edu.bistu.cs.ir.model.Player;
 import cn.edu.bistu.cs.ir.utils.AgeUtils;
 import cn.edu.bistu.cs.ir.utils.JsonUtils;
 import org.apache.lucene.document.*;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.document.Field;
+import org.apache.lucene.document.IntPoint;
+import org.apache.lucene.document.StoredField;
+import org.apache.lucene.document.StringField;
+import org.apache.lucene.document.TextField;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import us.codecraft.webmagic.ResultItems;
@@ -41,7 +47,7 @@ public class LucenePipeline implements Pipeline {
         if (!result) {
             log.error("无法将ID为[{}]的柔道家信息写入索引", id);
         } else {
-            log.info("成功将ID为[{}]的柔道家信息写入索引", id);
+            // log.info("成功将ID为[{}]的柔道家信息写入索引", id);
         }
     }
 

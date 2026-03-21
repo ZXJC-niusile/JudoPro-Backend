@@ -41,6 +41,14 @@ public enum WeightClass {
     }
 
     /**
+     * 获取显示名称（用于日志和前端显示）
+     * @return 体重级别的中文显示名称
+     */
+    public String getDisplayName() {
+        return name;  // 直接返回name字段，它已经包含了中文显示名称
+    }
+
+    /**
      * 根据体重获取对应的体重级别
      * @param weight 体重（kg）
      * @return 体重级别，如果体重为null则返回null

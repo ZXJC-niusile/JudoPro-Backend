@@ -18,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -145,6 +146,8 @@ public class QueryController {
     public QueryResponse<PageResponse<Map<String, String>>> queryByAgeGroup(@RequestParam(name = "ageGroup") String ageGroup,
                                                                            @RequestParam(name = "pageNo", defaultValue = "1") int pageNo,
                                                                            @RequestParam(name = "pageSize", defaultValue = "10") int pageSize) {
+        log.info("🎯 年龄组查询API开始 - ageGroup: {}, pageNo: {}, pageSize: {}", ageGroup, pageNo, pageSize);
+
         try {
             // 参数验证
             if (pageNo < 1) pageNo = 1;
@@ -178,7 +181,16 @@ public class QueryController {
             
             // 构建分页响应对象
             PageResponse<Map<String, String>> pageResponse = PageResponse.of(results, pageNo, pageSize, pageResult.getTotal());
-            
+
+            // 添加调试日志
+            log.info("✅ 年龄组查询完成 - 组别: {}, 查询到结果数: {}, 总记录数: {}",
+                ageGroup, results.size(), pageResult.getTotal());
+
+            // 如果是CADET且无结果，特别提醒
+            if ("CADET".equalsIgnoreCase(ageGroup) && results.isEmpty()) {
+                log.warn("🚨 CADET年龄组查询返回空结果！建议检查数据源中是否有15-17岁的运动员");
+            }
+
             return QueryResponse.genSucc("年龄组别检索成功", pageResponse);
         } catch (Exception e) {
             log.error("年龄组别检索过程中发生异常:[{}]", e.getMessage());
@@ -198,34 +210,46 @@ public class QueryController {
     public QueryResponse<PageResponse<Map<String, String>>> queryByWeightClass(@RequestParam(name = "weightClass") String weightClass,
                                                                               @RequestParam(name = "pageNo", defaultValue = "1") int pageNo,
                                                                               @RequestParam(name = "pageSize", defaultValue = "10") int pageSize) {
+        log.info("体重级别查询API - weightClass: {}, pageNo: {}, pageSize: {}", weightClass, pageNo, pageSize);
+
         try {
             // 参数验证
             if (pageNo < 1) pageNo = 1;
             if (pageSize < 1 || pageSize > 100) pageSize = 10;
-            
+
             // 解析体重级别
             WeightClass wc = WeightClass.getByCode(weightClass);
+            log.info("解析体重级别: {} -> {}", weightClass, wc != null ? wc.getDisplayName() : "null");
+
             if (wc == null) {
+                log.warn("体重级别参数无效: {}", weightClass);
                 return QueryResponse.genErr("无效的体重级别，支持：-60, -66, -73, -81, -90, -100, +100");
             }
-            
+
+            log.info("开始Lucene体重级别查询 - 体重级别: {}", wc.getDisplayName());
             // 使用Lucene层面分页查询
             IdxService.PageResult pageResult = idxService.queryByWeightClass(wc, pageNo, pageSize);
-            
             // 转换Document为Map
             List<Map<String, String>> results = new ArrayList<>();
             for (Document doc : pageResult.getDocuments()) {
+                String kg = doc.get("KG");
+                String name = doc.get("NAME");
+
+                log.info("找到运动员 - 姓名: {}, 体重级别: {}", name, kg);
+
                 Map<String, String> record = new HashMap<>();
                 record.put("ID", doc.get("ID"));
-                record.put("NAME", doc.get("NAME"));
+                record.put("NAME", name);
                 record.put("AGE", doc.get("AGE"));
                 record.put("IMAGE", doc.get("IMAGE"));
                 record.put("LOCATION", doc.get("LOCATION"));
                 record.put("LOCATION_ICON", doc.get("LOCATION_ICON"));
-                record.put("KG", doc.get("KG"));
+                record.put("KG", kg);
                 record.put("PHOTOS", doc.get("PHOTOS"));
                 results.add(record);
             }
+
+            log.info("Document转换完成 - 转换记录数: {}", results.size());
             
             // 构建分页响应对象
             PageResponse<Map<String, String>> pageResponse = PageResponse.of(results, pageNo, pageSize, pageResult.getTotal());
@@ -399,13 +423,17 @@ public class QueryController {
     public QueryResponse<PageResponse<Map<String, String>>> queryByCountry(@RequestParam(name = "country") String country,
                                                                           @RequestParam(name = "pageNo", defaultValue = "1") int pageNo,
                                                                           @RequestParam(name = "pageSize", defaultValue = "10") int pageSize) {
+        log.info("国家查询API - country: {}, pageNo: {}, pageSize: {}", country, pageNo, pageSize);
+
         try {
             // 参数验证
             if (pageNo < 1) pageNo = 1;
             if (pageSize < 1 || pageSize > 100) pageSize = 10;
-            
+
+            log.info("开始Lucene国家查询 - 国家: {}", country);
             // 使用Lucene层面分页查询
             IdxService.PageResult pageResult = idxService.queryByCountry(country, pageNo, pageSize);
+            log.info("Lucene查询完成 - 结果总数: {}", pageResult.getTotal());
             
             // 转换Document为Map
             List<Map<String, String>> results = new ArrayList<>();
@@ -592,6 +620,9 @@ public class QueryController {
             @RequestParam(name = "country", required = false) String country,
             @RequestParam(name = "pageNo", defaultValue = "1") int pageNo,
             @RequestParam(name = "pageSize", defaultValue = "10") int pageSize) {
+        log.info("组合查询API - keyword: {}, ageGroup: {}, weightClass: {}, country: {}, pageNo: {}, pageSize: {}",
+                keyword, ageGroup, weightClass, country, pageNo, pageSize);
+
         try {
             // 参数验证
             if (pageNo < 1) pageNo = 1;
@@ -773,47 +804,93 @@ public class QueryController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
 
+        log.info("🎯 QueryController模糊搜索接口 - 接收到请求: fuzzyKeyword='{}', similarity={}, page={}, size={}",
+                 fuzzyKeyword, similarity, page, size);
+
         try {
-            // 参数验证
+            // 参数验证和详细日志
             if (fuzzyKeyword == null || fuzzyKeyword.trim().isEmpty()) {
+                log.warn("⚠️ 模糊搜索关键词为空或空白");
                 return QueryResponse.genErr("模糊关键词不能为空");
             }
 
             if (similarity != null && (similarity < 0.0 || similarity > 1.0)) {
+                log.warn("⚠️ 相似度阈值参数异常: {}", similarity);
                 return QueryResponse.genErr("相似度阈值必须在0.0-1.0之间");
             }
 
-            if (page < 1) page = 1;
-            if (size < 1 || size > 100) size = 10;
+            if (page < 1) {
+                log.warn("⚠️ 页码参数异常: {}，调整为1", page);
+                page = 1;
+            }
 
-            // 执行模糊搜索（转换为从0开始的页码）
-            PageResponse<Player> playerResult = idxService.fuzzySearch(fuzzyKeyword, similarity, page - 1, size);
+            if (size < 1 || size > 100) {
+                log.warn("⚠️ 页大小参数异常: {}，调整为10", size);
+                size = 10;
+            }
+
+            log.info("✅ 参数验证通过，准备调用IdxService进行模糊搜索");
+
+            // 🔧 修复：直接传递原始页码，无需-1转换（IdxService内部已处理分页逻辑）
+            PageResponse<Player> playerResult = idxService.fuzzySearch(fuzzyKeyword, similarity, page, size);
+
+            log.info("📊 IdxService返回结果 - 实际返回{}条记录，总匹配数: {}",
+                     playerResult.getContent().size(), playerResult.getTotalElements());
 
             // 转换Player为Map格式以保持一致性
             List<Map<String, String>> results = new ArrayList<>();
-            for (Player player : playerResult.getContent()) {
-                Map<String, String> record = new HashMap<>();
-                record.put("ID", player.getId());
-                record.put("NAME", player.getName());
-                record.put("AGE", player.getAge());
-                record.put("IMAGE", player.getImage());
-                record.put("LOCATION", player.getLocation());
-                record.put("LOCATION_ICON", player.getLocationIcon() != null ? player.getLocationIcon() : "");
-                record.put("KG", player.getKg());
+            int successCount = 0;
+            int failCount = 0;
 
-                // 处理照片信息
-                String photosJson = "[]";
-                if (player.getPhotoEntity() != null) {
-                    try {
-                        photosJson = convertPhotoEntityToJson(player.getPhotoEntity());
-                    } catch (Exception e) {
-                        log.warn("转换照片信息失败: {}", e.getMessage());
-                        photosJson = "[]";
+            for (Player player : playerResult.getContent()) {
+                try {
+                    Map<String, String> record = new HashMap<>();
+
+                    // 🔧 添加空值检查，防止NPE
+                    record.put("ID", player.getId() != null ? player.getId() : "");
+                    record.put("NAME", player.getName() != null ? player.getName() : "");
+                    record.put("AGE", player.getAge() != null ? player.getAge() : "");
+                    record.put("IMAGE", player.getImage() != null ? player.getImage() : "");
+                    record.put("LOCATION", player.getLocation() != null ? player.getLocation() : "");
+                    record.put("LOCATION_ICON", player.getLocationIcon() != null ? player.getLocationIcon() : "");
+                    record.put("KG", player.getKg() != null ? player.getKg() : "");
+
+                    // 处理照片信息 - 增强错误处理
+                    String photosJson = "[]";
+                    if (player.getPhotoEntity() != null) {
+                        try {
+                            photosJson = convertPhotoEntityToJson(player.getPhotoEntity());
+                            // 🔧 修复：计算PhotoEntity中的总照片数量
+                            int totalPhotos = 0;
+                            PhotoEntity photoEntity = player.getPhotoEntity();
+                            if (photoEntity != null) {
+                                int spotlightPhotos = (photoEntity.getUnderTheSpotlights() != null) ? photoEntity.getUnderTheSpotlights().size() : 0;
+                                int eventPhotos = (photoEntity.getPhotos() != null) ? photoEntity.getPhotos().size() : 0;
+                                totalPhotos = spotlightPhotos + eventPhotos;
+                            }
+                            log.debug("📸 成功处理运动员照片信息 - ID: {}, 聚光灯照片: {}, 赛事照片: {}, 总照片数: {}",
+                                     player.getId(),
+                                     (photoEntity.getUnderTheSpotlights() != null) ? photoEntity.getUnderTheSpotlights().size() : 0,
+                                     (photoEntity.getPhotos() != null) ? photoEntity.getPhotos().size() : 0,
+                                     totalPhotos);
+                        } catch (Exception e) {
+                            log.warn("⚠️ 转换照片信息失败 - ID: {}, 错误: {}", player.getId(), e.getMessage());
+                            photosJson = "[]";
+                        }
                     }
+                    record.put("PHOTOS", photosJson);
+
+                    results.add(record);
+                    successCount++;
+
+                } catch (Exception e) {
+                    failCount++;
+                    log.error("💥 转换Player记录失败 - Player: {}, 错误: {}", player, e.getMessage());
+                    // 继续处理其他记录，不因单个失败影响整体
                 }
-                record.put("PHOTOS", photosJson);
-                results.add(record);
             }
+
+            log.info("🔄 数据转换完成 - 成功: {}, 失败: {}", successCount, failCount);
 
             // 构建分页响应对象
             PageResponse<Map<String, String>> pageResponse = PageResponse.of(
@@ -823,10 +900,13 @@ public class QueryController {
                 playerResult.getTotalElements()
             );
 
+            log.info("🏆 QueryController模糊搜索接口成功返回 - 当前页: {}, 页大小: {}, 返回记录数: {}, 总匹配数: {}",
+                    page, size, results.size(), playerResult.getTotalElements());
+
             return QueryResponse.genSucc("模糊搜索成功", pageResponse);
 
         } catch (Exception e) {
-            log.error("模糊匹配检索失败", e);
+            log.error("💥 QueryController模糊搜索接口异常 - 关键词: '{}', 错误: {}", fuzzyKeyword, e.getMessage(), e);
             return QueryResponse.genErr("模糊搜索失败：" + e.getMessage());
         }
     }
@@ -1016,6 +1096,37 @@ public class QueryController {
         } catch (Exception e) {
             log.error("智能搜索失败", e);
             return QueryResponse.genErr("智能搜索失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 🎯 新增：从workspace重建索引
+     *
+     * @return 重建结果
+     */
+    @PostMapping("/rebuild-index")
+    public QueryResponse<Map<String, Object>> rebuildIndex() {
+        try {
+            log.info("=== 收到重建索引请求 ===");
+
+            // 执行索引重建
+            int rebuiltRecords = idxService.rebuildIndexFromWorkspace();
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("rebuiltRecords", rebuiltRecords);
+            result.put("message", rebuiltRecords > 0 ? "索引重建成功" : "索引重建失败");
+
+            if (rebuiltRecords > 0) {
+                log.info("索引重建完成，成功重建{}条记录", rebuiltRecords);
+                return QueryResponse.genSucc("索引重建成功", result);
+            } else {
+                log.error("索引重建失败，返回记录数: {}", rebuiltRecords);
+                return QueryResponse.genErr("索引重建失败，请检查日志");
+            }
+
+        } catch (Exception e) {
+            log.error("重建索引API调用失败", e);
+            return QueryResponse.genErr("重建索引失败：" + e.getMessage());
         }
     }
 }

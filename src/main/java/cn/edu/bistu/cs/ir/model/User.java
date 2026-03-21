@@ -1,6 +1,7 @@
 package cn.edu.bistu.cs.ir.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 import javax.persistence.*;
 
@@ -18,6 +19,7 @@ public class User {
     @Column(unique = true)
     private String email;
 
+    @JsonProperty("password")
     private String password;
 
     private String avatar;

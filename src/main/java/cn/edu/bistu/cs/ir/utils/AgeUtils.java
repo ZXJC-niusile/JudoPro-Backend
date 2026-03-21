@@ -37,7 +37,7 @@ public class AgeUtils {
                 return Integer.parseInt(matcher.group(1));
             }
 
-            log.warn("无法解析年龄字符串: {}", ageStr);
+            // log.warn("无法解析年龄字符串: {}", ageStr);
             return null;
         } catch (NumberFormatException e) {
             log.error("年龄解析失败: {}", ageStr, e);

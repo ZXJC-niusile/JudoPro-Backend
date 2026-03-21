@@ -64,13 +64,13 @@ public class CrawlerService{
         spider.thread(1);
         spider.addUrl(startPage);
         spider.runAsync();
-        log.info("启动面向国际柔道联盟的爬虫，抓取选手ID为[{}]的柔道选手的信息", blogger);
+        // log.info("启动面向国际柔道联盟的爬虫，抓取选手ID为[{}]的柔道选手的信息", blogger);
     }
 
     @PostConstruct
     public void init(){
         if(config.isStartCrawler()){
-            log.info("系统配置信息中[startCrawler]配置项为true，启动爬虫的运行");
+            // log.info("系统配置信息中[startCrawler]配置项为true，启动爬虫的运行");
             startCnBlogCrawler("all_male");
         }
     }

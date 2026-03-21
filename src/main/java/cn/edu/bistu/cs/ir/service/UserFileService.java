@@ -1,8 +1,11 @@
 package cn.edu.bistu.cs.ir.service;
 
 import cn.edu.bistu.cs.ir.entity.UserFile;
+import cn.edu.bistu.cs.ir.entity.AIAnalysis;
 import cn.edu.bistu.cs.ir.repository.UserFileRepository;
+import cn.edu.bistu.cs.ir.repository.AIAnalysisRepository;
 import cn.edu.bistu.cs.ir.utils.FileUploadUtils;
+import cn.edu.bistu.cs.ir.dto.FileWithAnalysisDTO;
 import org.apache.commons.io.FilenameUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -262,5 +265,152 @@ public class UserFileService {
                 return String.format("%.1f MB", totalSize / (1024.0 * 1024.0));
             }
         }
+    }
+
+    // ===== 新增：支持AI分析结果的文件列表查询方法 =====
+
+    @Autowired
+    private AIAnalysisRepository aiAnalysisRepository;
+
+    @Autowired
+    private AIAnalysisService aiAnalysisService;
+
+    /**
+     * 获取用户文件和AI分析结果的合并列表
+     * 同时返回原始文件和AI分析结果，用于个人中心展示
+     */
+    public java.util.List<cn.edu.bistu.cs.ir.dto.FileWithAnalysisDTO> getUserFilesWithAnalysis(
+            Long userId,
+            org.springframework.data.domain.Pageable pageable) {
+
+        log.info("🔍 [文件列表] 开始获取用户{}的文件和AI分析结果", userId);
+
+        java.util.List<cn.edu.bistu.cs.ir.dto.FileWithAnalysisDTO> result = new java.util.ArrayList<>();
+
+        // 1. 获取原始文件列表
+        log.info("📁 [文件列表] 查询原始文件列表...");
+        org.springframework.data.domain.Page<UserFile> userFiles = userFileRepository.findByUserIdAndIsDeletedFalseOrderByUploadTimeDesc(userId, pageable);
+
+        // 2. 获取AI分析结果列表
+        log.info("🤖 [文件列表] 查询AI分析结果列表...");
+        java.util.List<AIAnalysis> analysisList = aiAnalysisRepository.findByUserIdAndAnalysisStatusOrderByCreatedTimeDesc(userId, "completed");
+
+        log.info("📊 [文件列表] 查询结果 - 原始文件数量: {}, AI分析结果数量: {}",
+                userFiles.getTotalElements(), analysisList.size());
+
+        // 3. 处理原始文件
+        for (UserFile userFile : userFiles.getContent()) {
+            cn.edu.bistu.cs.ir.dto.FileWithAnalysisDTO dto = cn.edu.bistu.cs.ir.dto.FileWithAnalysisDTO.fromUserFile(userFile);
+
+            // 检查是否有对应的AI分析结果
+            java.util.Optional<AIAnalysis> analysis = analysisList.stream()
+                    .filter(a -> a.getUserFileId().equals(userFile.getId()))
+                    .findFirst();
+
+            if (analysis.isPresent()) {
+                dto.addAnalysisInfo(analysis.get());
+                log.info("✅ [文件列表] 文件ID {} 关联AI分析结果ID {}", userFile.getId(), analysis.get().getId());
+            }
+
+            result.add(dto);
+        }
+
+        // 4. 添加独立的AI分析结果（作为单独的卡片显示）
+        for (AIAnalysis analysis : analysisList) {
+            // 检查是否已经在原始文件中处理过
+            boolean alreadyProcessed = result.stream()
+                    .anyMatch(dto -> dto.getAnalysisId() != null && dto.getAnalysisId().equals(analysis.getId()));
+
+            if (!alreadyProcessed) {
+                // 获取原始文件信息
+                java.util.Optional<UserFile> originalFile = userFileRepository.findById(analysis.getUserFileId());
+                if (originalFile.isPresent()) {
+                    cn.edu.bistu.cs.ir.dto.FileWithAnalysisDTO analysisDto = cn.edu.bistu.cs.ir.dto.FileWithAnalysisDTO
+                            .fromAnalysisOnly(analysis, originalFile.get());
+                    result.add(analysisDto);
+                    log.info("🎯 [文件列表] 添加独立的AI分析结果卡片 - 分析ID: {}, 原文件ID: {}",
+                            analysis.getId(), analysis.getUserFileId());
+                }
+            }
+        }
+
+        log.info("🎉 [文件列表] 合并完成 - 总返回数量: {}", result.size());
+
+        return result;
+    }
+
+    /**
+     * 获取用户文件和AI分析结果的分页合并列表（支持过滤）
+     */
+    public java.util.Map<String, Object> getUserFilesWithAnalysisPaged(
+            Long userId,
+            int page,
+            int size,
+            String type,
+            String filename) {
+
+        log.info("📄 [文件列表] 分页查询用户{}的文件和AI分析结果 - 页码: {}, 大小: {}, 类型: {}, 文件名: {}",
+                userId, page, size, type, filename);
+
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
+
+        java.util.List<cn.edu.bistu.cs.ir.dto.FileWithAnalysisDTO> allResults;
+        long totalCount;
+
+        if (type != null && !type.isEmpty()) {
+            // 按类型过滤：只查询原始文件，然后添加对应的AI分析结果
+            org.springframework.data.domain.Page<UserFile> userFiles = userFileRepository.findByUserIdAndFileTypeAndIsDeletedFalseOrderByUploadTimeDesc(userId, type, pageable);
+
+            allResults = new java.util.ArrayList<>();
+            totalCount = userFiles.getTotalElements();
+
+            for (UserFile userFile : userFiles.getContent()) {
+                cn.edu.bistu.cs.ir.dto.FileWithAnalysisDTO dto = cn.edu.bistu.cs.ir.dto.FileWithAnalysisDTO.fromUserFile(userFile);
+
+                // 查找对应的AI分析结果
+                java.util.Optional<AIAnalysis> analysis = aiAnalysisRepository.findByUserFileIdAndAnalysisStatusOrderByCreatedTimeDesc(userFile.getId(), "completed").stream().findFirst();
+                if (analysis.isPresent()) {
+                    dto.addAnalysisInfo(analysis.get());
+                }
+
+                allResults.add(dto);
+            }
+        } else if (filename != null && !filename.isEmpty()) {
+            // 按文件名过滤
+            org.springframework.data.domain.Page<UserFile> userFiles = userFileRepository.findByUserIdAndOriginalFilenameContainingIgnoreCaseAndIsDeletedFalseOrderByUploadTimeDesc(userId, filename, pageable);
+
+            allResults = new java.util.ArrayList<>();
+            totalCount = userFiles.getTotalElements();
+
+            for (UserFile userFile : userFiles.getContent()) {
+                cn.edu.bistu.cs.ir.dto.FileWithAnalysisDTO dto = cn.edu.bistu.cs.ir.dto.FileWithAnalysisDTO.fromUserFile(userFile);
+
+                java.util.Optional<AIAnalysis> analysis = aiAnalysisRepository.findByUserFileIdAndAnalysisStatusOrderByCreatedTimeDesc(userFile.getId(), "completed").stream().findFirst();
+                if (analysis.isPresent()) {
+                    dto.addAnalysisInfo(analysis.get());
+                }
+
+                allResults.add(dto);
+            }
+        } else {
+            // 无过滤条件，获取所有文件和AI分析结果
+            allResults = getUserFilesWithAnalysis(userId, pageable);
+
+            // 计算总数（原始文件数 + 完成的AI分析结果数）
+            long originalFileCount = userFileRepository.countByUserIdAndIsDeletedFalse(userId);
+            long analysisCount = aiAnalysisRepository.countByUserIdAndAnalysisStatus(userId, "completed");
+            totalCount = originalFileCount + analysisCount;
+        }
+
+        // 返回分页结果
+        return java.util.Map.of(
+            "files", allResults,
+            "totalElements", totalCount,
+            "totalPages", (int) Math.ceil((double) totalCount / size),
+            "currentPage", page,
+            "size", size,
+            "hasNext", (page + 1) * size < totalCount,
+            "hasPrevious", page > 0
+        );
     }
 }
