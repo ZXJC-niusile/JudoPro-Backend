@@ -91,3 +91,91 @@ flowchart TB
 - **双引擎并行/协同 AI 分析工作流**：
   1. **外部多模态大模型（火山引擎）**：内置专业柔道技战术分析提示词（亦支持自定义 Prompt），对上传的比赛画面或视频进行投技/寝技识别、攻防态势评估与改进建议生成；
   2. **Python 视觉分析微服务**：通过二进制流（`/analyze_binary`）或 Base64 接口联动视觉检测服务，自动拉取带关键点/动作框标注的结果图片或视频并回存至后端与 MySQL `ai_analysis` 表。
+
+---
+
+## 📂 项目目录结构
+
+```text
+JudoPro-Backend
+├── pom.xml                                        # Maven 依赖与构建配置
+└── src
+    ├── main
+    │   ├── java/cn/edu/bistu/cs/ir
+    │   │   ├── IrDemoApplication.java             # Spring Boot 应用启动入口
+    │   │   ├── config/                            # 全局配置层
+    │   │   │   ├── Config.java                    # 爬虫与索引工作目录参数配置
+    │   │   │   ├── FileUploadConfig.java          # 多媒体上传限制与路径配置
+    │   │   │   ├── SecurityConfig.java            # Spring Security 权限与会话配置
+    │   │   │   ├── VolcengineConfig.java          # 火山引擎多模态大模型连接与重试配置
+    │   │   │   └── WebMvcConfig.java              # CORS 跨域、静态资源映射与拦截器注册
+    │   │   ├── controller/                        # RESTful 接口控制层
+    │   │   │   ├── QueryController.java           # 柔道运动员多维检索与索引管理接口
+    │   │   │   ├── UserController.java            # 用户注册、登录、会话与资料接口
+    │   │   │   └── FileUploadController.java      # 图片/视频管理与双引擎 AI 分析接口
+    │   │   ├── crawler/                           # 数据采集层
+    │   │   │   ├── IjfCrawler.java                # IJF 国际柔道联合会页面解析处理器
+    │   │   │   └── CrawlerService.java            # 爬虫生命周期与异步调度服务
+    │   │   ├── dto/                               # 数据传输对象 (FileWithAnalysisDTO)
+    │   │   ├── entity/                            # JPA 数据库实体 (UserFile, AIAnalysis)
+    │   │   ├── index/                             # Lucene 搜索引擎核心层
+    │   │   │   ├── IdxService.java                # 索引构建、多维/模糊/智能查询与重建服务
+    │   │   │   └── LucenePipeline.java            # WebMagic -> Lucene 实时索引写入管道
+    │   │   ├── interceptor/                       # 全局请求日志拦截器 (ApiLoggingInterceptor)
+    │   │   ├── model/                             # 领域模型与枚举 (Player, PhotoEntity, AgeGroup, WeightClass, Continent, User 等)
+    │   │   ├── repository/                        # Spring Data JPA 持久层接口
+    │   │   ├── service/                           # 核心业务逻辑层 (AIAnalysisService, SearchCriteria, UserFileService, UserService)
+    │   │   └── utils/                             # 通用工具类 (分页封装 PageResponse、统一响应 QueryResponse、文件/网络/年龄计算等)
+    │   └── resources/
+    │       ├── application.properties             # 核心服务、数据库与上传参数配置
+    │       ├── schema.sql                         # 数据库表结构参考脚本
+    │       └── logback-spring.xml                 # 分级日志配置
+    └── test/java/cn/edu/bistu/cs/ir               # 组合查询、模糊检索、区间过滤与领域映射单元测试集
+```
+
+---
+
+## 📡 RESTful API 接口概览
+
+### 1. 运动员多维检索模块 (`/query`)
+
+| 方法 | 路径 | 核心参数 | 功能说明 |
+| :---: | :--- | :--- | :--- |
+| `GET` | `/query/kw` | `kw`, `pageNo`, `pageSize` | 基于 HanLP 分词的关键词分页检索 |
+| `GET` | `/query/smart` | `keyword`, `page`, `size` | **智能检索**（精确匹配优先 + 模糊匹配补充） |
+| `GET` | `/query/fuzzy` | `fuzzyKeyword`, `similarity`, `page`, `size` | 基于相似度阈值的模糊/容错检索 |
+| `GET` | `/query/advanced` | `keyword`, `fuzzyKeyword`, `ageGroup`, `weightClass`, `continent`, `country` 等 | 支持模糊与精确混排的高级复合检索 |
+| `GET` | `/query/combined` | `keyword`, `ageGroup`, `minAge`, `maxAge`, `weightClass`, `minWeight`, `maxWeight`, `continent`, `country` | 多维度布尔组合精确过滤分页检索 |
+| `GET` | `/query/ageGroup` | `ageGroup` (`CADET` / `JUNIOR` / `SENIOR` / `VETERAN`) | 按柔道年龄组别分页检索 |
+| `GET` | `/query/ageRange` | `minAge`, `maxAge`, `pageNo`, `pageSize` | 按年龄数值区间分页检索 |
+| `GET` | `/query/weightClass` | `weightClass` (`-60`, `-66`, `-73`, `-81`, `-90`, `-100`, `+100`) | 按国际标准公斤级分页检索 |
+| `GET` | `/query/weightRange` | `minWeight`, `maxWeight`, `pageNo`, `pageSize` | 按体重数值范围分页检索 |
+| `GET` | `/query/continent` / `/query/country` | `continent` / `country` | 按所属大洲或国家/地区分页检索 |
+| `GET` | `/query/ageGroups` / `/query/weightClasses` / `/query/continents` / `/query/countries` | `continent`（仅 `/countries` 可选） | 获取前端筛选器所需的字典枚举元数据 |
+| `GET` | `/query/others` / `/query/addOthers` | `continent`, `country` | 查询或动态追加指定大洲的扩展国家列表 |
+| `POST` | `/query/rebuild-index` | 无 | 从本地 `workspace` 爬虫归档数据全量重建 Lucene 索引 |
+
+### 2. 用户认证模块 (`/api/user`)
+
+| 方法 | 路径 | 参数 / 请求体 | 功能说明 |
+| :---: | :--- | :--- | :--- |
+| `POST` | `/api/user/register` | JSON: `username`, `email`, `password` | 新用户邮箱注册（BCrypt 加密存储） |
+| `POST` | `/api/user/login` | JSON: `username`（支持用户名或邮箱）, `password` | 登录并建立 HttpSession 与 Security 认证上下文 |
+| `GET` | `/api/user/me` | Session Cookie | 获取当前已登录用户信息 |
+| `GET` | `/api/user/info/{userId}` | 路径参数 `userId` | 根据用户 ID 查询公开资料 |
+| `POST` | `/api/user/logout` | Session Cookie | 注销当前会话并清理认证上下文 |
+
+### 3. 多媒体与双引擎 AI 分析模块 (`/api/file`)
+
+| 方法 | 路径 | 核心参数 | 功能说明 |
+| :---: | :--- | :--- | :--- |
+| `POST` | `/api/file/analyze` | `file` (图片/视频), `prompt` (可选), `description` (可选) | **核心接口**：存储媒体并联动火山引擎大模型 + Python 视觉服务完成技战术文字与视觉标注分析 |
+| `POST` | `/api/file/upload/image` | `file`, `description`, `category`, `is_analysis_requested` | 上传单张图片（支持按需触发条件式 AI 分析） |
+| `POST` | `/api/file/upload/images` | `files` | 批量上传多张图片 |
+| `POST` | `/api/file/upload/video` | `file`, `description`, `category`, `is_analysis_requested` | 上传比赛视频（支持按需触发条件式 AI 分析） |
+| `GET` | `/api/file/list` | `page`, `size`, `type` | 分页获取当前用户的媒体文件及关联 AI 分析结果 |
+| `GET` | `/api/file/detail/{fileId}` | 路径参数 `fileId` | 查询单个文件元数据与详细 AI 分析报告 |
+| `GET` | `/api/file/download/{fileId}` | 路径参数 `fileId` | 下载媒体文件并自动累加下载计数 |
+| `GET` | `/api/file/statistics` / `/recent` / `/popular` | 分页或数量参数 | 获取用户媒体统计概览、最新上传列表、高下载量热门文件 |
+| `PUT` | `/api/file/description/{fileId}` | `fileId`, `description` | 更新媒体文件备注说明 |
+| `DELETE` | `/api/file/delete/{fileId}` / `/api/file/delete` | `fileId` 或批量 ID | 删除单个或批量清理用户媒体文件 |
