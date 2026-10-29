@@ -18,10 +18,13 @@
 
 **JudoPro-Backend** 面向柔道运动训练辅助、运动员档案检索与赛事影像复盘场景构建。针对传统体育资料分散、跨维度查询困难以及赛事视频/图像缺乏自动化技战术解读等痛点，团队在上游课程框架基础上完成了以下核心演进：
 
-1. **垂直领域重构**：构建面向 [国际柔道联合会（IJF）](https://www.ijf.org/) 的多优先级定向爬虫与柔道领域数据模型（体重级别、年龄组别、全球国家/大洲映射、聚光灯及赛事图集）。
-2. **检索引擎全面升级**：基于 Apache Lucene 与 HanLP 分词器，研发涵盖精确分词、区间过滤、多条件布尔组合、编辑距离模糊纠错及智能优先排序的多维检索服务。
-3. **业务全栈化扩展**：引入 MySQL + Spring Data JPA 持久化体系与 Spring Security + Session 双重鉴权机制，补齐完整的用户与个人媒体资产管理能力。
-4. **多模态 AI 技战术分析**：打通火山引擎（Volcengine）多模态大模型与 Python 计算机视觉微服务，支持对柔道比赛图片与视频流进行动作识别、可视化标注回传与专业技战术文字复盘。
+| 对比维度 | 上游基础工程 (`ruoyu-chen/ir_demo`) | 本项目二次开发成果 (`JudoPro-Backend`) |
+| :--- | :--- | :--- |
+| **业务领域与数据源** | 高校简介静态示例检索 | 面向 **国际柔道联合会（IJF）** 全球运动员档案、国别公斤级与高清赛事图集动态采集 |
+| **检索能力深度** | 基础单关键词检索 | 扩展至 **16+ 检索接口**：年龄组、公斤级、大洲/国家、数值区间、多维布尔组合、模糊纠错、智能混合排序与在线重建索引 |
+| **用户与持久化体系** | 无数据库 / 无用户状态 | 集成 **MySQL 8 + Spring Data JPA + Spring Security**，支持邮箱/用户名双登录、BCrypt 加密与会话鉴权 |
+| **多媒体与 AI 能力** | 无 | 新增 **图片/视频资产管理** 及 **火山引擎多模态大模型 + Python 视觉微服务** 双引擎柔道技战术智能分析与视觉标注回传 |
+| **工程化与质量保障** | 基础启动示例 | 引入全局 API 日志拦截器、统一分页与响应封装，并配套组合/模糊/区间查询等完整 JUnit 单元测试集 |
 
 ---
 
@@ -179,3 +182,80 @@ JudoPro-Backend
 | `GET` | `/api/file/statistics` / `/recent` / `/popular` | 分页或数量参数 | 获取用户媒体统计概览、最新上传列表、高下载量热门文件 |
 | `PUT` | `/api/file/description/{fileId}` | `fileId`, `description` | 更新媒体文件备注说明 |
 | `DELETE` | `/api/file/delete/{fileId}` / `/api/file/delete` | `fileId` 或批量 ID | 删除单个或批量清理用户媒体文件 |
+
+---
+
+## 🚀 本地部署与快速启动
+
+### 1. 环境依赖
+- **JDK**：Java 11 及以上
+- **构建工具**：Maven 3.6+
+- **数据库**：MySQL 8.0+
+- **可选协同服务**：Python 视觉分析微服务（默认端口 `8000` / `5000`）与火山引擎多模态 API 密钥（仅在使用 AI 媒体分析功能时需要）
+
+### 2. 初始化数据库
+在本地或远程 MySQL 实例中创建 `JudoPro` 数据库：
+
+```sql
+CREATE DATABASE JudoPro DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+> 项目已启用 `spring.jpa.hibernate.ddl-auto=update`，应用首次启动时会自动创建或更新 `users`、`user_files`、`ai_analysis` 等数据表结构（亦可参考 `src/main/resources/schema.sql`）。
+
+### 3. 修改核心配置
+编辑 `src/main/resources/application.properties`，根据本地环境调整数据库连接与工作目录：
+
+```properties
+# Lucene 索引与爬虫数据工作目录（请确保进程具备读写权限）
+irdemo.dir.home=workspace
+irdemo.dir.idx=${irdemo.dir.home}/idx
+irdemo.dir.crawler=${irdemo.dir.home}/crawler
+
+# MySQL 数据库连接配置
+spring.datasource.url=jdbc:mysql://127.0.0.1:3306/JudoPro?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+spring.datasource.username=your_db_user
+spring.datasource.password=your_db_password
+
+# 多媒体文件上传限制与存储路径
+file.upload.upload-path=uploads
+spring.servlet.multipart.max-file-size=50MB
+spring.servlet.multipart.max-request-size=100MB
+
+# （可选）火山引擎多模态大模型配置，对应 VolcengineConfig
+# volcengine.base-url=https://api.volcengine.com
+# volcengine.api-key=your_volcengine_api_key
+```
+
+### 4. 编译、测试与运行
+
+- **运行单元测试**：
+  ```bash
+  mvn test
+  ```
+- **打包可执行 JAR**：
+  ```bash
+  mvn clean package -DskipTests
+  ```
+- **启动后端服务**：
+  可在 IDE 中直接运行 `cn.edu.bistu.cs.ir.IrDemoApplication`，或通过命令行启动：
+  ```bash
+  java -jar target/ir_demo-0.1.0-SNAPSHOT.jar
+  ```
+- **重建本地检索索引**（若 `workspace/crawler` 下已有采集归档数据）：
+  ```bash
+  curl -X POST http://localhost:8080/query/rebuild-index
+  ```
+
+---
+
+## 👥 项目团队与致谢
+
+### 核心开发成员
+- [@ZXJC-niusile](https://github.com/ZXJC-niusile)
+- [@Z-Weather](https://github.com/Z-Weather)
+- [@ZZHow1024](https://github.com/ZZHow1024)
+- [@JiaBoYuan-666](https://github.com/JiaBoYuan-666)
+
+### 致谢说明
+- 感谢北京信息科技大学《信息检索与搜索引擎》课程示例工程 [`ruoyu-chen/ir_demo`](https://github.com/ruoyu-chen/ir_demo)（[@ruoyu-chen](https://github.com/ruoyu-chen)）提供的基础检索教学框架，以及前期探索项目 [`ZXJC-niusile/ir_ijf`](https://github.com/ZXJC-niusile/ir_ijf) 积累的数据适配经验。
+- 本项目所有爬虫与检索实验数据均来源于公开赛事档案，仅限高校科研教学与大学生创新创业训练使用。
