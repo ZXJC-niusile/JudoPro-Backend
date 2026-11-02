@@ -23,7 +23,7 @@ public class VolcengineConfig {
     /**
      * 聊天引擎API密钥
      */
-    private String apiKey = "80e00021-76e9-4844-b98b-2d342a17e164";
+    private String apiKey = "your_volcengine_api_key_here";
 
     /**
      * 连接超时时间（毫秒）

@@ -45,16 +45,4 @@ public class AgeUtils {
         }
     }
 
-    /**
-     * 获取年龄的模糊匹配范围
-     * @param age 年龄
-     * @param fuzzyRange 模糊范围（上下浮动值）
-     * @return 年龄范围数组 [最小年龄, 最大年龄]
-     */
-    public static int[] getFuzzyAgeRange(int age, int fuzzyRange) {
-        return new int[]{
-            Math.max(0, age - fuzzyRange),
-            age + fuzzyRange
-        };
-    }
 }

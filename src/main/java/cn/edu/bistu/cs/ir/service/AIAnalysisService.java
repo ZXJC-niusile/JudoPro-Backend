@@ -10,9 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -181,105 +179,6 @@ public class AIAnalysisService {
     }
 
     /**
-     * 保存标注媒体文件
-     * @param analysis 分析记录
-     * @param annotatedMediaData 标注媒体Base64数据
-     */
-    private void saveAnnotatedMediaFile(AIAnalysis analysis, String annotatedMediaData) {
-        log.info("🔄 开始保存{}标注文件", analysis.getMediaType());
-
-        try {
-            // 从Python微服务结果中提取实际的Base64数据
-            String actualBase64Data = extractBase64FromPythonResult(analysis.getMediaType(), annotatedMediaData);
-
-            if (actualBase64Data != null && !actualBase64Data.trim().isEmpty()) {
-                // 获取原始文件扩展名（假设与源文件相同）
-                String originalExtension = getFileExtensionFromMediaType(analysis.getMediaType());
-
-                // 保存标注文件
-                FileUploadUtils.AnnotatedFileResult result = fileUploadUtils.saveAnnotatedFile(
-                    actualBase64Data,
-                    analysis.getMediaType(),
-                    originalExtension
-                );
-
-                // 更新分析记录
-                analysis.setAnnotatedMediaUrl(result.getFileUrl());
-                analysis.setAnnotatedFilename(result.getFilename());
-
-                log.info("✅ {}标注文件保存成功", analysis.getMediaType());
-                log.info("📁 文件URL: {}", result.getFileUrl());
-                log.info("📊 文件大小: {}", result.getFormattedFileSize());
-
-            } else {
-                log.warn("⚠️ 未找到有效的标注文件Base64数据");
-            }
-
-        } catch (Exception e) {
-            log.error("❌ 保存{}标注文件失败", analysis.getMediaType(), e);
-            throw new RuntimeException("保存标注文件失败: " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * 从Python微服务结果中提取Base64数据
-     * @param mediaType 媒体类型
-     * @param pythonServiceResult Python微服务结果
-     * @return Base64数据字符串
-     */
-    private String extractBase64FromPythonResult(String mediaType, String pythonServiceResult) {
-        try {
-            log.info("🔍 解析Python微服务结果，媒体类型: {}", mediaType);
-            log.info("📝 Python结果预览: {}", pythonServiceResult.length() > 200 ?
-                    pythonServiceResult.substring(0, 200) + "..." : pythonServiceResult);
-
-            // 检查是否为JSON格式
-            if (pythonServiceResult.trim().startsWith("{") || pythonServiceResult.trim().startsWith("[")) {
-                log.info("📋 检测到JSON格式，尝试解析");
-                @SuppressWarnings("unchecked")
-                Map<String, Object> result = objectMapper.readValue(pythonServiceResult, Map.class);
-
-                String base64Data = null;
-
-                if ("image".equals(mediaType)) {
-                    base64Data = (String) result.get("image_base64_data");
-                    log.info("🖼️ 提取图片Base64数据: {}", base64Data != null ? "成功" : "失败");
-                } else if ("video".equals(mediaType)) {
-                    base64Data = (String) result.get("video_base64_data");
-                    log.info("🎬 提取视频Base64数据: {}", base64Data != null ? "成功" : "失败");
-                }
-
-                return base64Data;
-            } else {
-                // 如果不是JSON格式，可能是直接返回的Base64数据
-                log.info("📋 检测到非JSON格式，可能为直接的Base64数据");
-                return pythonServiceResult;
-            }
-
-        } catch (Exception e) {
-            log.error("❌ 解析Python微服务结果失败，返回原始数据", e);
-            // 如果JSON解析失败，直接返回原始数据
-            return pythonServiceResult;
-        }
-    }
-
-    /**
-     * 根据媒体类型获取文件扩展名
-     * @param mediaType 媒体类型
-     * @return 文件扩展名
-     */
-    private String getFileExtensionFromMediaType(String mediaType) {
-        switch (mediaType) {
-            case "image":
-                return "jpg"; // 默认使用jpg格式
-            case "video":
-                return "mp4"; // 默认使用mp4格式
-            default:
-                return "jpg"; // 默认扩展名
-        }
-    }
-
-    /**
      * 根据用户文件ID查找分析结果
      * @param userFileId 用户文件ID
      * @return 分析结果列表（最新的在前）
@@ -407,19 +306,4 @@ public class AIAnalysisService {
         return "unknown";
     }
 
-    /**
-     * 限制字符串长度，避免超出数据库字段限制
-     * @param str 原始字符串
-     * @param maxLength 最大长度
-     * @return 限制长度后的字符串
-     */
-    private String limitStringLength(String str, int maxLength) {
-        if (str == null) {
-            return null;
-        }
-        if (str.length() <= maxLength) {
-            return str;
-        }
-        return str.substring(0, maxLength);
-    }
 }

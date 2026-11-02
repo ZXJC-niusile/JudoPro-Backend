@@ -7,9 +7,7 @@ import cn.edu.bistu.cs.ir.utils.JsonUtils;
 import cn.edu.bistu.cs.ir.utils.StringUtil;
 import cn.edu.bistu.cs.ir.utils.PageResponse;
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
-import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.document.*;
 import org.apache.lucene.document.DoublePoint;
 import org.apache.lucene.document.Field;
@@ -29,14 +27,10 @@ import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.BoostQuery;
 import org.apache.lucene.search.FuzzyQuery;
-import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.MatchAllDocsQuery;
-import org.apache.lucene.search.Query;
-import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TermQuery;
-import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.WildcardQuery;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
@@ -48,13 +42,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.HashSet;
 import java.util.Set;
-import org.apache.lucene.document.Document;
-import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.Query;
-import org.apache.lucene.search.TopDocs;
-import org.apache.lucene.search.ScoreDoc;
 import java.io.IOException;
-import java.io.StringReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -62,7 +50,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -166,7 +153,7 @@ public class IdxService implements DisposableBean {
         Query query = parser.parse(kw);
         
         // 先获取总记录数
-        TopDocs totalDocs = searcher.search(query, Integer.MAX_VALUE);
+        TopDocs totalDocs = searcher.search(query, Math.max((pageNo - 1) * pageSize + pageSize, 1));
         long total = totalDocs.totalHits.value;
         
         // 计算分页参数
@@ -553,7 +540,7 @@ public class IdxService implements DisposableBean {
         Query query = booleanQuery.build();
         
         // 先获取总记录数
-        TopDocs totalDocs = searcher.search(query, Integer.MAX_VALUE);
+        TopDocs totalDocs = searcher.search(query, Math.max((pageNo - 1) * pageSize + pageSize, 1));
         long total = totalDocs.totalHits.value;
         
         // 计算分页参数
@@ -701,7 +688,7 @@ public class IdxService implements DisposableBean {
         }
         
         // 先获取总记录数
-        TopDocs totalDocs = searcher.search(query, Integer.MAX_VALUE);
+        TopDocs totalDocs = searcher.search(query, Math.max((pageNo - 1) * pageSize + pageSize, 1));
         long total = totalDocs.totalHits.value;
         
         // 计算分页参数
