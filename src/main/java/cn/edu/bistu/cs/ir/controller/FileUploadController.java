@@ -22,9 +22,8 @@ import okhttp3.RequestBody;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -48,13 +47,22 @@ public class FileUploadController {
     private static final Logger log = LoggerFactory.getLogger(FileUploadController.class);
 
     // 服务器地址配置常量
-    private static final String SERVER_HOST = "10.199.201.199";
-    private static final String SERVER_PORT = "8080";
-    private static final String PYTHON_MICROSERVICE_PORT = "8000";
+
+
+
 
     // 微服务地址常量
-    private static final String PYTHON_BINARY_URL = "http://" + SERVER_HOST + ":" + PYTHON_MICROSERVICE_PORT + "/analyze_binary";
-    private static final String PYTHON_BASE64_URL = "http://" + SERVER_HOST + ":" + "5000" + "/analyze";
+
+    // 微服务配置参数（支持环境变量注入）
+    @Value("${python.microservice.host:127.0.0.1}")
+    private String pythonServiceHost;
+
+    @Value("${python.microservice.binary-port:8000}")
+    private String pythonBinaryPort;
+
+    private String getPythonBinaryUrl() {
+        return "http://" + pythonServiceHost + ":" + pythonBinaryPort + "/analyze_binary";
+    }
     
     @Autowired
     private FileUploadUtils fileUploadUtils;
@@ -85,7 +93,7 @@ public class FileUploadController {
         } else {
             log.warn("❌ Session中未找到userId，检查Session信息:");
             log.warn("   - Session ID: {}", request.getSession().getId());
-            log.warn("   - Session中存在的属性: {}", request.getSession().getAttributeNames().toString());
+            log.warn("   - Session中存在的属性: {}", Collections.list(request.getSession().getAttributeNames()));
 
             // 检查Session中是否有currentUser对象
             Object currentUser = request.getSession().getAttribute("currentUser");
@@ -1044,6 +1052,7 @@ public class FileUploadController {
                             FileUploadUtils.AnnotatedFileResult result = fileUploadUtils.saveAnnotatedFileFromBytes(
                                 fileBytes, mediaType, annotatedFilename
                             );
+                    
 
                             annotatedMediaUrl = result.getFileUrl();
                             log.info("✅ 标注文件已保存到后端: {}", annotatedMediaUrl);
@@ -1091,6 +1100,7 @@ public class FileUploadController {
                     pythonServiceResult,
                     annotatedMediaUrl   // 传递已保存的文件URL
                 );
+        
                 log.info("✅ AI分析结果保存成功 - 分析ID: {}", aiAnalysis.getId());
                 log.info("📊 数据库记录更新完成:");
                 log.info("   - 分析状态: {}", aiAnalysis.getAnalysisStatus());
@@ -1135,6 +1145,7 @@ public class FileUploadController {
                     (aiAnalysis.getExternalModelResultUrl() != null && !aiAnalysis.getExternalModelResultUrl().trim().isEmpty()) ||
                     (aiAnalysis.getExternalModelResult() != null && !aiAnalysis.getExternalModelResult().trim().isEmpty())
                 );
+        
 
                 log.info("📊 数据库保存结果检查:");
                 log.info("   - 外部模型结果已保存: {}", aiAnalysis.getExternalModelResult() != null ? "✅" : "❌");
@@ -1372,10 +1383,10 @@ public class FileUploadController {
 
         log.info("📋 使用Content-Type: {}", contentType);
 
-        RequestBody fileBody = RequestBody.create(
-            MediaType.parse(contentType),
-            mediaFile.getBytes()
-        );
+        RequestBody fileBody = RequestBody.create(mediaFile.getBytes(), MediaType.parse(contentType));
+
+
+
 
         requestBodyBuilder.addFormDataPart("file", mediaFile.getOriginalFilename(), fileBody);
 
@@ -1383,7 +1394,7 @@ public class FileUploadController {
 
         // 构建HTTP请求
         Request request = new Request.Builder()
-                .url(PYTHON_BINARY_URL)  // 使用全局常量配置
+                .url(getPythonBinaryUrl())  // 使用全局常量配置
                 .addHeader("Content-Type", "multipart/form-data")
                 .post(body)
                 .build();
@@ -1417,96 +1428,6 @@ public class FileUploadController {
         }
     }
 
-    /**
-     * 调用Python微服务获取标点图片数据（原Base64方法，保留作为兼容）
-     */
-    private String callPythonMicroservice(String mediaBase64, String mediaType) throws Exception {
-        log.info("🐍 构造Python微服务请求体...");
-
-        // 按照规范构造发送给Python微服务的请求体
-        Map<String, Object> pythonRequest = new HashMap<>();
-        pythonRequest.put("type", mediaType); // "image" 或 "video"
-        pythonRequest.put("data_base64", mediaBase64);
-
-        log.info("📤 准备发送请求到Python微服务 (http://127.0.0.1:5000/analyze)...");
-
-        // 发送HTTP请求到Python微服务
-        String pythonResult = callPythonService(pythonRequest);
-
-        log.info("📨 收到Python微服务响应 - 响应长度: {} 字符", pythonResult.length());
-        log.info("🔍 响应预览: {}", pythonResult.length() > 200 ? pythonResult.substring(0, 200) + "..." : pythonResult);
-
-        return pythonResult;
-    }
-
-    /**
-     * 发送HTTP请求到Python微服务
-     */
-    private String callPythonService(Map<String, Object> requestBody) throws Exception {
-        long startTime = System.currentTimeMillis();
-
-        try {
-            // 打印请求体详情
-            String requestBodyStr = objectMapper.writeValueAsString(requestBody);
-            log.info("🚀 Python微服务请求详情:");
-            log.info("   URL: http://127.0.0.1:5000/analyze");
-            log.info("   Method: POST");
-            log.info("   Content-Type: application/json");
-            log.info("   Body大小: {} 字符", requestBodyStr.length());
-            log.info("   Body内容: {}", requestBodyStr);
-
-            MediaType mediaType = MediaType.parse("application/json; charset=utf-8");
-            RequestBody body = RequestBody.create(mediaType, requestBodyStr);
-
-            Request request = new Request.Builder()
-                .url(PYTHON_BASE64_URL)
-                .addHeader("Content-Type", "application/json")
-                .post(body)
-                .build();
-
-            log.info("📤 发送请求到Python微服务...");
-
-            try (Response response = client.newCall(request).execute()) {
-                long endTime = System.currentTimeMillis();
-                long duration = endTime - startTime;
-
-                log.info("📥 收到Python微服务响应:");
-                log.info("   状态码: {}", response.code());
-                log.info("   响应时间: {}ms", duration);
-                log.info("   响应消息: {}", response.message());
-                log.info("   响应头: {}", response.headers());
-
-                if (!response.isSuccessful()) {
-                    log.error("❌ Python微服务请求失败 - 状态码: {}", response.code());
-                    throw new RuntimeException("Python微服务返回错误: " + response.code() + " " + response.message());
-                }
-
-                String responseBody = response.body().string();
-                log.info("📄 响应体大小: {} 字符", responseBody.length());
-                log.info("📄 响应体内容: {}", responseBody.length() > 500 ? responseBody.substring(0, 500) + "..." : responseBody);
-
-                return responseBody;
-            }
-        } catch (Exception e) {
-            long endTime = System.currentTimeMillis();
-            long duration = endTime - startTime;
-
-            log.error("💥 Python微服务请求异常 - 耗时: {}ms", duration, e);
-            log.error("❌ 异常类型: {}", e.getClass().getSimpleName());
-            log.error("❌ 异常消息: {}", e.getMessage());
-
-            // 打印异常堆栈的详细信息
-            StackTraceElement[] stackTrace = e.getStackTrace();
-            if (stackTrace.length > 0) {
-                log.error("❌ 异常位置: {}.{}():{}",
-                    stackTrace[0].getClassName(),
-                    stackTrace[0].getMethodName(),
-                    stackTrace[0].getLineNumber());
-            }
-
-            throw new RuntimeException("Python微服务调用失败: " + e.getMessage(), e);
-        }
-    }
 
     /**
      * 发送HTTP请求到火山引擎
@@ -1518,18 +1439,18 @@ public class FileUploadController {
             // 打印请求体详情
             String requestBodyStr = objectMapper.writeValueAsString(requestBody);
             log.info("🚀 HTTP请求详情:");
-            log.info("   URL: https://ark.cn-beijing.volces.com/api/v3/chat/completions");
+            log.info("   URL: {}/api/v3/chat/completions", volcengineConfig.getBaseUrl());
             log.info("   Method: POST");
             log.info("   Headers: Authorization=Bearer [HIDDEN], Content-Type=application/json");
             log.info("   Body大小: {} 字符", requestBodyStr.length());
             log.info("   Body预览: {}", requestBodyStr.length() > 200 ? requestBodyStr.substring(0, 200) + "..." : requestBodyStr);
 
             MediaType mediaType = MediaType.parse("application/json; charset=utf-8");
-            RequestBody body = RequestBody.create(mediaType, requestBodyStr);
+            RequestBody body = RequestBody.create(requestBodyStr, mediaType);
 
             Request request = new Request.Builder()
-                .url("https://ark.cn-beijing.volces.com/api/v3/chat/completions")
-                .addHeader("Authorization", "Bearer 80e00021-76e9-4844-b98b-2d342a17e164")
+                .url(volcengineConfig.getBaseUrl() + "/api/v3/chat/completions")
+                .addHeader("Authorization", "Bearer " + volcengineConfig.getApiKey())
                 .addHeader("Content-Type", "application/json")
                 .post(body)
                 .build();
@@ -1829,15 +1750,15 @@ public class FileUploadController {
 
         // 替换各种localhost/127.0.0.1的情况，使用全局常量
         String processedUrl = originalUrl
-                .replace("127.0.0.1:" + PYTHON_MICROSERVICE_PORT, SERVER_HOST + ":" + PYTHON_MICROSERVICE_PORT)
-                .replace("localhost:" + PYTHON_MICROSERVICE_PORT, SERVER_HOST + ":" + PYTHON_MICROSERVICE_PORT);
+                .replace("127.0.0.1:" + pythonBinaryPort, pythonServiceHost + ":" + pythonBinaryPort)
+                .replace("localhost:" + pythonBinaryPort, pythonServiceHost + ":" + pythonBinaryPort);
 
         // 处理其他���口情况
         if (processedUrl.contains("127.0.0.1") || processedUrl.contains("localhost")) {
             log.warn("⚠️ [URL处理] 检测到未处理的localhost地址: {}", originalUrl);
             // 更通用的替换逻辑
-            processedUrl = processedUrl.replaceAll("127\\.0\\.0\\.1:\\d+", SERVER_HOST + ":" + PYTHON_MICROSERVICE_PORT);
-            processedUrl = processedUrl.replaceAll("localhost:\\d+", SERVER_HOST + ":" + PYTHON_MICROSERVICE_PORT);
+            processedUrl = processedUrl.replaceAll("127\\.0\\.0\\.1:\\d+", pythonServiceHost + ":" + pythonBinaryPort);
+            processedUrl = processedUrl.replaceAll("localhost:\\d+", pythonServiceHost + ":" + pythonBinaryPort);
         }
 
         log.info("🔧 [URL处理] 地址替换逻辑应用完成");

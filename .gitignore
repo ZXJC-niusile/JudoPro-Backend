@@ -1,9 +1,35 @@
-# Default ignored files
-/workspace.xml
-.idea/
+# Compiled output & build directories
 target/
+*.class
+
+# IDE & Editor files
+.idea/
+/workspace.xml
+*.iml
+.vscode/
+.claude/
+*.suo
+*.user
+
+# Operating System files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# Log files
 logs/
+*.log
+*.log.*
+
+# Runtime generated data & media storage
 workspace/
+uploads/
 es_docker/
-ir_demo.iml
 /es_docker/
+
+# Local sensitive configuration & environment files
+.env
+.env.local
+*.local
+application-local.properties
+application-dev.properties

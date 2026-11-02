@@ -24,7 +24,7 @@
 | **检索能力深度** | 基础单关键词检索 | 扩展至 **16+ 检索接口**：年龄组、公斤级、大洲/国家、数值区间、多维布尔组合、模糊纠错、智能混合排序与在线重建索引 |
 | **用户与持久化体系** | 无数据库 / 无用户状态 | 集成 **MySQL 8 + Spring Data JPA + Spring Security**，支持邮箱/用户名双登录、BCrypt 加密与会话鉴权 |
 | **多媒体与 AI 能力** | 无 | 新增 **图片/视频资产管理** 及 **火山引擎多模态大模型 + Python 视觉微服务** 双引擎柔道技战术智能分析与视觉标注回传 |
-| **工程化与质量保障** | 基础启动示例 | 引入全局 API 日志拦截器、统一分页与响应封装，并配套组合/模糊/区间查询等完整 JUnit 单元测试集 |
+| **工程化与质量保障** | 基础启动示例 | 引入全局 API 日志拦截器、统一响应与分页封装、安全凭据环境变量注入解耦、H2 内存数据库测试套件与全量回归单测 |
 
 ---
 
@@ -62,11 +62,12 @@ flowchart TB
 | **开发语言** | Java | JDK 11 |
 | **核心框架** | Spring Boot | 2.7.5（Web / Validation / DevTools） |
 | **安全认证** | Spring Security | BCrypt 密码加密 + HttpSession / SecurityContext 双重认证 |
-| **数据持久化** | Spring Data JPA + MySQL | Hibernate ORM（`ddl-auto=update`）+ MySQL Connector 8.0.33 |
+| **数据持久化** | Spring Data JPA + MySQL | Hibernate ORM（`ddl-auto=update`）+ MySQL Connector/J 8.0.33 |
 | **全文检索引擎** | Apache Lucene | 8.11.1（Core / Queries / QueryParser / Highlighter） |
 | **中文分词器** | HanLP | `portable-1.8.3` + `hanlp-lucene-plugin 1.1.7` |
 | **数据采集爬虫** | WebMagic | 0.7.6（支持优先级队列调度与多 Pipeline 输出） |
-| **HTTP 与多模态通信** | OkHttp3 + Retrofit2 | OkHttp 4.10.0（支持大文件二进制流传输与超时重试） |
+| **HTTP 与多模态通信** | OkHttp | OkHttp 4.10.0（支持大文件二进制流传输与超时重试） |
+| **测试支撑** | JUnit 5 + H2 Database | 内存数据库隔离测试，单测零外部网络/数据库依赖 |
 | **AI 协同服务** | 火山引擎多模态 API + Python CV 微服务 | 技战术文本生成 + 图像/视频骨骼动作标注 |
 
 ---
@@ -84,16 +85,18 @@ flowchart TB
   - **标准体重级别（`WeightClass`）**：覆盖 `-60kg`、`-66kg`、`-73kg`、`-81kg`、`-90kg`、`-100kg`、`+100kg` 等国际标准级别。
   - **全球地理映射（`Continent` & `CountryContinentMapping`）**：内置六大洲与国家/IOC 代码映射表，支持动态扩展未归类国家集合（`others`）。
 - **丰富的检索模式**：支持关键词分页检索、单维度精确筛选、年龄/体重数值区间查询、多条件组合检索（`SearchCriteria` 建造者模式）、基于编辑距离的模糊容错搜索（`fuzzy`）、高级复合检索（`advanced`）以及“精确优先 + 模糊兜底”的智能检索（`smart`）。
+- **性能与内存优化**：分页查询由传统超大堆内存预分配重构为自适应深度检索，杜绝潜在的 `OutOfMemoryError`。
 
 ### 3. 👤 用户权限与会话管理体系 (`UserController` & `SecurityConfig`)
 - 支持邮箱注册、**用户名 / 邮箱双模式登录** 与 BCrypt 强哈希密码校验。
 - 采用 `HttpSession` 与 `Spring Security Authentication` 双重会话识别策略，兼顾前后端分离跨域联调与接口级权限控制。
+- 用户实体实施 `@JsonProperty(access = WRITE_ONLY)` 敏感脱敏，防止凭据序列化泄露。
 
 ### 4. 🤖 多媒体资产管理与双引擎 AI 技战术分析 (`FileUploadController` & `AIAnalysisService`)
 - **全生命周期媒体管理**：支持单图、多图批量及大体积比赛视频上传（默认单文件上限 50MB、单次请求 100MB），提供文件列表分页、详情查看、下载次数统计、热门/最新资源排行及描述维护。
 - **双引擎并行/协同 AI 分析工作流**：
   1. **外部多模态大模型（火山引擎）**：内置专业柔道技战术分析提示词（亦支持自定义 Prompt），对上传的比赛画面或视频进行投技/寝技识别、攻防态势评估与改进建议生成；
-  2. **Python 视觉分析微服务**：通过二进制流（`/analyze_binary`）或 Base64 接口联动视觉检测服务，自动拉取带关键点/动作框标注的结果图片或视频并回存至后端与 MySQL `ai_analysis` 表。
+  2. **Python 视觉分析微服务**：通过原生二进制数据流（`/analyze_binary`）接口联动视觉检测微服务，执行人体姿态关键点骨骼动作识别，并将带标注的结果回传持久化至 `ai_analysis` 表。
 
 ---
 
@@ -101,17 +104,18 @@ flowchart TB
 
 ```text
 JudoPro-Backend
-├── pom.xml                                        # Maven 依赖与构建配置
+├── pom.xml                                        # Maven 依赖与构建配置（标准化 artifactId: judopro-backend）
+├── .env.example                                   # 环境变量与私有配置参考模板
 └── src
     ├── main
     │   ├── java/cn/edu/bistu/cs/ir
     │   │   ├── IrDemoApplication.java             # Spring Boot 应用启动入口
     │   │   ├── config/                            # 全局配置层
     │   │   │   ├── Config.java                    # 爬虫与索引工作目录参数配置
-    │   │   │   ├── FileUploadConfig.java          # 多媒体上传限制与路径配置
+    │   │   │   ├── FileUploadConfig.java          # 多媒体上传限制、跨平台静态路径配置
     │   │   │   ├── SecurityConfig.java            # Spring Security 权限与会话配置
-    │   │   │   ├── VolcengineConfig.java          # 火山引擎多模态大模型连接与重试配置
-    │   │   │   └── WebMvcConfig.java              # CORS 跨域、静态资源映射与拦截器注册
+    │   │   │   ├── VolcengineConfig.java          # 火山引擎多模态大模型连接配置
+    │   │   │   └── WebMvcConfig.java              # CORS 跨域、日志拦截器注册
     │   │   ├── controller/                        # RESTful 接口控制层
     │   │   │   ├── QueryController.java           # 柔道运动员多维检索与索引管理接口
     │   │   │   ├── UserController.java            # 用户注册、登录、会话与资料接口
@@ -122,7 +126,7 @@ JudoPro-Backend
     │   │   ├── dto/                               # 数据传输对象 (FileWithAnalysisDTO)
     │   │   ├── entity/                            # JPA 数据库实体 (UserFile, AIAnalysis)
     │   │   ├── index/                             # Lucene 搜索引擎核心层
-    │   │   │   ├── IdxService.java                # 索引构建、多维/模糊/智能查询与重建服务
+    │   │   │   ├── IdxService.java                # 倒排索引构建、自适应分页查询与重建服务
     │   │   │   └── LucenePipeline.java            # WebMagic -> Lucene 实时索引写入管道
     │   │   ├── interceptor/                       # 全局请求日志拦截器 (ApiLoggingInterceptor)
     │   │   ├── model/                             # 领域模型与枚举 (Player, PhotoEntity, AgeGroup, WeightClass, Continent, User 等)
@@ -130,10 +134,12 @@ JudoPro-Backend
     │   │   ├── service/                           # 核心业务逻辑层 (AIAnalysisService, SearchCriteria, UserFileService, UserService)
     │   │   └── utils/                             # 通用工具类 (分页封装 PageResponse、统一响应 QueryResponse、文件/网络/年龄计算等)
     │   └── resources/
-    │       ├── application.properties             # 核心服务、数据库与上传参数配置
-    │       ├── schema.sql                         # 数据库表结构参考脚本
+    │       ├── application.properties             # 核心服务配置（支持环境变量注入与安全占位）
+    │       ├── schema.sql                         # MySQL 数据库完整建表脚本
     │       └── logback-spring.xml                 # 分级日志配置
-    └── test/java/cn/edu/bistu/cs/ir               # 组合查询、模糊检索、区间过滤与领域映射单元测试集
+    └── test
+        ├── java/cn/edu/bistu/cs/ir                # 组合查询、模糊检索、区间过滤与领域映射单元测试集
+        └── resources/                             # 测试专属配置（H2 内存数据库）与离线测试数据集
 ```
 
 ---
@@ -190,8 +196,8 @@ JudoPro-Backend
 ### 1. 环境依赖
 - **JDK**：Java 11 及以上
 - **构建工具**：Maven 3.6+
-- **数据库**：MySQL 8.0+
-- **可选协同服务**：Python 视觉分析微服务（默认端口 `8000` / `5000`）与火山引擎多模态 API 密钥（仅在使用 AI 媒体分析功能时需要）
+- **数据库**：MySQL 8.0+（单元测试已内置 H2 内存数据库，测试无需启动 MySQL）
+- **可选协同服务**：Python 视觉分析微服务（默认端口 `8000`）与火山引擎多模态 API 密钥（仅在使用 AI 分析功能时需要）
 
 ### 2. 初始化数据库
 在本地或远程 MySQL 实例中创建 `JudoPro` 数据库：
@@ -200,35 +206,52 @@ JudoPro-Backend
 CREATE DATABASE JudoPro DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-> 项目已启用 `spring.jpa.hibernate.ddl-auto=update`，应用首次启动时会自动创建或更新 `users`、`user_files`、`ai_analysis` 等数据表结构（亦可参考 `src/main/resources/schema.sql`）。
+> 项目已启用 `spring.jpa.hibernate.ddl-auto=update`，应用首次启动时会自动创建或更新 `users`、`user_files`、`ai_analysis` 等数据表结构（完整 DDL 参见 `src/main/resources/schema.sql`）。
 
-### 3. 修改核心配置
-编辑 `src/main/resources/application.properties`，根据本地环境调整数据库连接与工作目录：
+### 3. 配置开发环境
 
+项目遵循 **12-Factor 原则**，所有敏感配置（数据库地址密码、AI API Key 等）均支持环境变量注入，无需直接修改代码库配置文件。
+
+你可以直接参考根目录下的 [`.env.example`](.env.example) 设置系统环境变量，或在本地创建 `application-local.properties` 进行覆盖：
+
+```bash
+# 示例：通过环境变量指定数据库与模型凭据
+export DB_URL="jdbc:mysql://127.0.0.1:3306/JudoPro?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+export DB_USERNAME="your_mysql_user"
+export DB_PASSWORD="your_mysql_password"
+export VOLCENGINE_API_KEY="your_volcengine_api_key_here"
+export PYTHON_SERVICE_HOST="127.0.0.1"
+```
+
+默认配置项说明（`src/main/resources/application.properties`）：
 ```properties
-# Lucene 索引与爬虫数据工作目录（请确保进程具备读写权限）
+# Lucene 索引与爬虫数据工作目录
 irdemo.dir.home=workspace
 irdemo.dir.idx=${irdemo.dir.home}/idx
 irdemo.dir.crawler=${irdemo.dir.home}/crawler
 
-# MySQL 数据库连接配置
-spring.datasource.url=jdbc:mysql://127.0.0.1:3306/JudoPro?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
-spring.datasource.username=your_db_user
-spring.datasource.password=your_db_password
+# 数据库连接（优先使用环境变量 DB_URL / DB_USERNAME / DB_PASSWORD）
+spring.datasource.url=${DB_URL:jdbc:mysql://localhost:3306/JudoPro?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+spring.datasource.username=${DB_USERNAME:root}
+spring.datasource.password=${DB_PASSWORD:your_db_password}
 
-# 多媒体文件上传限制与存储路径
+# 文件上传配置
 file.upload.upload-path=uploads
 spring.servlet.multipart.max-file-size=50MB
 spring.servlet.multipart.max-request-size=100MB
 
-# （可选）火山引擎多模态大模型配置，对应 VolcengineConfig
-# volcengine.base-url=https://api.volcengine.com
-# volcengine.api-key=your_volcengine_api_key
+# 外部微服务配置
+python.microservice.host=${PYTHON_SERVICE_HOST:127.0.0.1}
+python.microservice.binary-port=${PYTHON_BINARY_PORT:8000}
+
+# 火山引擎多模态模型配置
+volcengine.base-url=${VOLCENGINE_BASE_URL:https://ark.cn-beijing.volces.com}
+volcengine.api-key=${VOLCENGINE_API_KEY:your_volcengine_api_key_here}
 ```
 
 ### 4. 编译、测试与运行
 
-- **运行单元测试**：
+- **运行单元测试**（内置 H2 内存数据库，自包含高速运行）：
   ```bash
   mvn test
   ```
@@ -239,7 +262,7 @@ spring.servlet.multipart.max-request-size=100MB
 - **启动后端服务**：
   可在 IDE 中直接运行 `cn.edu.bistu.cs.ir.IrDemoApplication`，或通过命令行启动：
   ```bash
-  java -jar target/ir_demo-0.1.0-SNAPSHOT.jar
+  java -jar target/judopro-backend-0.1.0-SNAPSHOT.jar
   ```
 - **重建本地检索索引**（若 `workspace/crawler` 下已有采集归档数据）：
   ```bash

@@ -39,10 +39,9 @@ public class CrawlerService{
 
 
     /**
-     * 启动面向国际柔道联盟的爬虫
-     * @param blogger 待爬取的运动员ID
+     * 启动面向国际柔道联合会（IJF）的赛事数据爬虫
      */
-    public void startCnBlogCrawler(String blogger) {
+    public void startIjfCrawler() {
         String startPage = "https://www.ijf.org/judoka";
 
         if(this.spider != null){
@@ -64,14 +63,22 @@ public class CrawlerService{
         spider.thread(1);
         spider.addUrl(startPage);
         spider.runAsync();
-        // log.info("启动面向国际柔道联盟的爬虫，抓取选手ID为[{}]的柔道选手的信息", blogger);
+        log.info("面向国际柔道联合会（IJF）的爬虫任务已异步启动");
     }
 
     @PostConstruct
     public void init(){
         if(config.isStartCrawler()){
-            // log.info("系统配置信息中[startCrawler]配置项为true，启动爬虫的运行");
-            startCnBlogCrawler("all_male");
+            log.info("系统配置 [startCrawler] 为 true，自动启动 IJF 爬虫任务");
+            startIjfCrawler();
         }
+    }
+    /**
+     * 兼容旧版命名方法
+     * @deprecated 请使用 {@link #startIjfCrawler()}
+     */
+    @Deprecated
+    public void startCnBlogCrawler(String blogger) {
+        startIjfCrawler();
     }
 }

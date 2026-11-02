@@ -1,5 +1,9 @@
+-- ========================================================
+-- JudoPro-Backend 数据库初始化脚本
+-- 兼容 MySQL 8.0+
+-- ========================================================
 
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '用户ID',
     username VARCHAR(255) NOT NULL UNIQUE COMMENT '用户名',
     email VARCHAR(255) UNIQUE COMMENT '邮箱地址',
@@ -9,9 +13,9 @@ CREATE TABLE users (
     gender VARCHAR(10) COMMENT '性别',
     birth_date VARCHAR(50) COMMENT '出生日期',
     enabled BOOLEAN DEFAULT TRUE COMMENT '账户是否启用'
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户表';
 
-CREATE TABLE user_files (
+CREATE TABLE IF NOT EXISTS user_files (
     id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '文件ID',
     user_id BIGINT NOT NULL COMMENT '用户ID',
     original_filename VARCHAR(255) NOT NULL COMMENT '原始文件名',
@@ -28,9 +32,8 @@ CREATE TABLE user_files (
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否已删除',
     delete_time DATETIME COMMENT '删除时间',
 
-    -- 添加外键约束（如果需要）
     FOREIGN KEY (user_id) REFERENCES users(id)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户上传媒体文件表';
 
 CREATE INDEX idx_user_files_user_id ON user_files(user_id);
 CREATE INDEX idx_user_files_file_type ON user_files(file_type);
@@ -42,6 +45,8 @@ CREATE TABLE IF NOT EXISTS ai_analysis (
     user_file_id BIGINT NOT NULL COMMENT '关联的用户文件ID',
     user_id BIGINT NOT NULL COMMENT '用户ID',
     external_model_result LONGTEXT COMMENT '外部模型（火山引擎）返回的文字描述',
+    external_model_result_url VARCHAR(500) COMMENT '外部模型文字描述文件URL',
+    external_model_result_filename VARCHAR(255) COMMENT '外部模型文字描述文件名',
     python_service_result LONGTEXT COMMENT 'Python微服务返回的完整结果JSON',
     annotated_media_url VARCHAR(500) COMMENT '标注后的媒体文件URL',
     annotated_filename VARCHAR(255) COMMENT '标注媒体文件的存储文件名',
@@ -59,9 +64,3 @@ CREATE TABLE IF NOT EXISTS ai_analysis (
     INDEX idx_analysis_time (analysis_time) COMMENT '分析时间索引',
     INDEX idx_created_time (created_time) COMMENT '创建时间索引'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI分析结果表';
-  -- 添加 external_model_result_url 列
-ALTER TABLE `ai_analysis`
-ADD COLUMN `external_model_result_url` VARCHAR(500);
-  -- 添加 external_model_result_filename 列
-  ALTER TABLE ai_analysis
-  ADD COLUMN external_model_result_filename VARCHAR(255);
