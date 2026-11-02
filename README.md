@@ -8,7 +8,7 @@
 
 > **大学生创新创业训练计划（大创）项目后端工程**
 >
-> 本项目基于上游《信息检索与搜索引擎》课程基础工程 [`ruoyu-chen/ir_demo`](https://github.com/ruoyu-chen/ir_demo) 与早期原型 [`ZXJC-niusile/ir_ijf`](https://github.com/ZXJC-niusile/ir_ijf) 进行了**全面深度二次开发与业务重构**：从最初单一的课程检索骨架，拓展升级为集 **国际柔道联合会（IJF）赛事数据自动化采集、多维度智能检索引擎、用户安全认证、多媒体资源库及“多模态大模型 + Python 视觉微服务”双引擎柔道技战术 AI 分析** 于一体的完整后端服务系统。
+> 本项目基于上游《信息检索与搜索引擎》课程基础工程 [`ruoyu-chen/ir_demo`](https://github.com/ruoyu-chen/ir_demo) 与早期原型 [`ZXJC-niusile/JudoPro-Backend-backup`](https://github.com/ZXJC-niusile/JudoPro-Backend-backup) 进行了**全面深度二次开发与业务重构**：从最初单一的课程检索骨架，拓展升级为集 **国际柔道联合会（IJF）赛事数据自动化采集、多维度智能检索引擎、用户安全认证、多媒体资源库及“多模态大模型 + Python 视觉微服务”双引擎柔道技战术 AI 分析** 于一体的完整后端服务系统。
 >
 > **声明：本项目所涉赛事与运动员公开数据仅用于高校学术研究与创新训练，严禁用于任何商业用途。**
 
